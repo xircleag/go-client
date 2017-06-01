@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -15,18 +16,58 @@ import (
 )
 
 type Conversation struct {
-	client             *Client          `json:"-"`
-	ID                 string           `json:"id,omitempty"`
-	URL                string           `json:"url,omitempty"`
-	MessagesURL        string           `json:"messages_url,omitempty"`
-	CreatedAt          time.Time        `json:"-"`
-	LastMessage        *Message         `json:"last_message,omitempty"`
-	Participants       []*BasicIdentity `json:"participants"`
-	Distinct           bool             `json:"distinct"`
-	UnreadMessageCount json.Number      `json:"unread_message_count,omitempty"`
-	Metadata           json.RawMessage  `json:"metadata,omitempty"`
+	// ID uniquely identifies the conversation.
+	ID string `json:"id,omitempty"`
+
+	// URL is the URL for accessing the conversation via the Layer REST API.
+	URL string `json:"url,omitempty"`
+
+	// MessagesURL is the URL for access the conversation messages via the Layer.
+	// REST API.
+	MessagesURL string `json:"messages_url,omitempty"`
+
+	// The time at which the conversation was initially created.
+	CreatedAt time.Time `json:"-"`
+
+	// LastMessage is a message object representing the last message sent in the
+	// conversation.
+	LastMessage *Message `json:"last_message,omitempty"`
+
+	// Participants is an array of BasicIdentiy objects containing information on
+	// the message participants.
+	Participants []*BasicIdentity `json:"participants"`
+
+	// Distinct represents whether this is a distinct conversation with the
+	// specified participant list.
+	Distinct bool `json:"distinct"`
+
+	// The number of unread messages on the conversation for the user specified
+	// by the client.
+	UnreadMessageCount json.Number `json:"unread_message_count,omitempty"`
+
+	// A generic interface available to store arbitrary metadata.
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+
+	// Internal reference to the client object.
+	client *Client `json:"-"`
 }
 
+func (c *Client) buildConversationURL(id string) (*url.URL, error) {
+	var err error
+	var u *url.URL
+	if id != "" {
+		u, err = url.Parse(fmt.Sprintf("/conversations/%s", id))
+	} else {
+		u, err = url.Parse("/conversations")
+	}
+	if err != nil {
+		return nil, err
+	}
+	u = c.baseURL.ResolveReference(u)
+	return u, nil
+}
+
+// Internal request to create a conversation
 type conversationCreate struct {
 	Participants []string    `json:"participants"`
 	Distinct     bool        `json:"distinct"`
@@ -63,17 +104,17 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 		// No more
 		return nil, iterator.Done
 	}
+	it.conversations[it.current-1].client = it.client
 	return it.conversations[it.current-1], nil
 }
 
 // Conversations gets all conversations for the user specified by the client connection, with a starting ID used for paging and iterations
 func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *string) ([]*Conversation, error) {
 	// Create the request URL
-	u, err := url.Parse("/conversations")
+	u, err := c.buildConversationURL("")
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation URL: %v", err)
 	}
-	u = c.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest("GET", u.String(), nil)
@@ -88,7 +129,7 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *stri
 	if from != nil {
 		q.Add("from_id", *from)
 	}
-	q.Add("page_size", "5")
+	q.Add("page_size", "100")
 	req.URL.RawQuery = q.Encode()
 
 	// Send the request
@@ -124,7 +165,10 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *stri
 func (c *Client) Conversations(ctx context.Context, sort *string) (*ConversationIterator, error) {
 	conversations, err := c.ConversationsFrom(ctx, sort, nil)
 	if err != nil {
-		return nil, err
+		return nil, iterator.Done
+	}
+	if len(conversations) <= 0 {
+		return nil, fmt.Errorf("No conversations")
 	}
 	from := conversations[len(conversations)-1].ID
 	return &ConversationIterator{
@@ -138,7 +182,45 @@ func (c *Client) Conversations(ctx context.Context, sort *string) (*Conversation
 
 // Conversation gets a single conversation for the user specified by the client connection
 func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, error) {
-	return nil, nil
+	u, err := c.buildConversationURL(id)
+	if err != nil {
+		return nil, fmt.Errorf("Error building conversation URL: %v", err)
+	}
+
+	// Create the request JSON
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating conversation request: %v", err)
+	}
+	req = req.WithContext(ctx)
+
+	// Send the request
+	res, err := c.transport.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating conversation: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("Conversation not found")
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Status code is %d", res.StatusCode)
+	}
+
+	// Parse the body
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing conversation create response")
+	}
+
+	var conversation *Conversation
+	if err := json.Unmarshal(body, &conversation); err != nil {
+		return nil, fmt.Errorf("Error parsing conversation JSON: %v", err)
+	}
+	conversation.client = c
+	return conversation, nil
 }
 
 // CreateConversation creates a conversation for the user specified by the client connection
@@ -151,11 +233,10 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	}
 
 	// Create the request URL
-	u, err := url.Parse("/conversations")
+	u, err := c.buildConversationURL("")
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation URL: %v", err)
 	}
-	u = c.baseURL.ResolveReference(u)
 
 	// Create the request JSON
 	query, err := json.Marshal(cc)
@@ -197,22 +278,22 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	if err := json.Unmarshal(body, &conversation); err != nil {
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
-
+	conversation.client = c
 	return conversation, nil
 }
 
 func (convo *Conversation) Delete(ctx context.Context) error {
-	return nil
+	return errors.New("Not implemented")
 }
 
 func (convo *Conversation) UpdateMetadata(ctx context.Context, metadata interface{}) error {
-	return nil
+	return errors.New("Not implemented")
 }
 
 func (convo *Conversation) AddParticipants(ctx context.Context, participants []string) error {
-	return nil
+	return errors.New("Not implemented")
 }
 
 func (convo *Conversation) RemoveParticipants(ctx context.Context, participants []string) error {
-	return nil
+	return errors.New("Not implemented")
 }

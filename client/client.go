@@ -1,4 +1,3 @@
-// A package to interact with the Layer Client API
 package client
 
 import (
