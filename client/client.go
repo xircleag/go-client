@@ -56,3 +56,13 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 
 	return c, nil
 }
+
+// Return the base URL
+func (c *Client) BaseURL() *url.URL {
+	return c.baseURL
+}
+
+// Return the websocket URL
+func (c *Client) WebsocketURL() *url.URL {
+	return c.websocketURL
+}

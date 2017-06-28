@@ -282,8 +282,54 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	return conversation, nil
 }
 
-func (convo *Conversation) Delete(ctx context.Context) error {
-	return errors.New("Not implemented")
+// Delete removes a conversation, with an optional mode of "all_participants" to
+// remove from all participant devices or "my_devices" to only remove from the
+// active users devices.  The "leave" boolean specifies if the current user
+// should leave the conversation, and is only applicable for a mode of "my_devices".
+func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool) error {
+	// Create the request URL
+	u, err := convo.client.buildConversationURL(convo.ID)
+	if err != nil {
+		return fmt.Errorf("Error building conversation URL: %v", err)
+	}
+
+	// Create the request
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("Error creating conversation request: %v", err)
+	}
+	req = req.WithContext(ctx)
+	q := req.URL.Query()
+	if mode != nil {
+		q.Add("mode", *mode)
+	}
+	if leave && *mode != "my_devices" {
+		return fmt.Errorf("You can only leave a conversation when mode is set to 'my_devices'")
+	} else if leave && *mode == "my_devices" {
+		q.Add("leave", "true")
+	}
+	req.URL.RawQuery = q.Encode()
+
+	// Send the request
+	res, err := convo.client.transport.Do(req)
+	if err != nil {
+		return fmt.Errorf("Error deleting conversation: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("Conversation not found")
+	}
+
+	if res.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("Forbidden")
+	}
+
+	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
+		return fmt.Errorf("Status code is %d", res.StatusCode)
+	}
+
+	return nil
 }
 
 func (convo *Conversation) UpdateMetadata(ctx context.Context, metadata interface{}) error {

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,11 +15,31 @@ import (
 	"golang.org/x/net/context"
 )
 
+const (
+	WebsocketMethodCounterRead        = "Method.Counter.read"
+	WebsocketMethodConversationCreate = "Method.Conversation.create"
+	WebsocketMethodMessageCreate      = "Method.Message.create"
+	WebsocketMethodPresenceUpdate     = "Method.Presence.update"
+	WebsocketMethodPresenceSync       = "Method.Presence.sync"
+
+	WebsocketSignalTyping = "typing"
+
+	WebsocketChangeConversationCreate          = "Change.ConversationCreate"
+	WebsocektChangeConversationDelete          = "Change.ConversationDelete"
+	WebsocketChangeConversationParticipants    = "Change.ConversationParticipants"
+	WebsocketChangeConversationMetadata        = "Change.ConversationMetadata"
+	WebsocketChangeConversationRecipientStatus = "Change.ConversationRecipientStatus"
+	WebsocketChangeConversationLastMessage     = "Change.ConversationLastMessage"
+	WebsocketChangeMessageCreate               = "Change.MessageCreate"
+	WebsocektChangeMessageDelete               = "Change.MessageDelete"
+)
+
 type Websocket struct {
-	client *Client
-	dialer *websocket.Dialer
-	conn   *websocket.Conn
-	wg     sync.WaitGroup
+	client   *Client
+	dialer   *websocket.Dialer
+	conn     *websocket.Conn
+	handlers *websocketEventHandlerSet
+	wg       sync.WaitGroup
 }
 
 type WebsocketPacket struct {
@@ -63,6 +84,92 @@ type WebsocketResponse struct {
 type WebsocketSignal struct {
 }
 
+// An interface to handle websocket event callbacks
+type WebsocketEventHandler interface {
+	Handle(w *Websocket, r *WebsocketResponse)
+}
+
+type WebsocketEventHandlerRemover interface {
+	Remove()
+}
+
+type WebsocketHandlerFunc func(*Websocket, *WebsocketResponse)
+
+func (hf WebsocketHandlerFunc) Handle(w *Websocket, r *WebsocketResponse) {
+	hf(w, r)
+}
+
+type websocketEventHandlerSet struct {
+	set map[string][]*websocketEventHandlerNode
+	sync.RWMutex
+}
+
+type websocketEventHandlerNode struct {
+	method  string
+	set     *websocketEventHandlerSet
+	handler WebsocketEventHandler
+}
+
+func (hn *websocketEventHandlerNode) Handle(w *Websocket, r *WebsocketResponse) {
+	hn.handler.Handle(w, r)
+}
+
+func (hn *websocketEventHandlerNode) Remove() {
+	hn.set.Lock()
+	defer hn.set.Unlock()
+	delete(hn.set.set, hn.method)
+}
+
+func newHandlerSet() *websocketEventHandlerSet {
+	return &websocketEventHandlerSet{
+		set: make(map[string][]*websocketEventHandlerNode),
+	}
+}
+
+func (hs *websocketEventHandlerSet) add(method string, h WebsocketEventHandler) WebsocketEventHandlerRemover {
+	method = strings.ToLower(method)
+	hs.Lock()
+	defer hs.Unlock()
+	node := &websocketEventHandlerNode{
+		method:  method,
+		set:     hs,
+		handler: h,
+	}
+	_, ok := hs.set[method]
+	if !ok {
+		hs.set[method] = []*websocketEventHandlerNode{node}
+	} else {
+		hs.set[method] = append(hs.set[method], node)
+	}
+
+	return node
+}
+
+// Dispatch events to registered handlers
+func (hs *websocketEventHandlerSet) dispatch(w *Websocket, r *WebsocketResponse) {
+	hs.Lock()
+	defer hs.Unlock()
+
+	method := strings.ToLower(r.Method)
+	set, ok := hs.set[method]
+	if !ok {
+		return
+	}
+
+	wg := &sync.WaitGroup{}
+	for _, h := range set {
+		wg.Add(1)
+
+		// Create a copy of the pointer
+		hc := h
+		go func() {
+			hc.Handle(w, r)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
 func (w *Websocket) connect() error {
 	// TODO: Add a mutex
 	w.wg.Add(1)
@@ -88,6 +195,7 @@ func (w *Websocket) connect() error {
 		return err
 	}
 	w.conn = ws
+	w.handlers.dispatch(w, &WebsocketResponse{Method: "connected"})
 
 	return nil
 }
@@ -115,6 +223,25 @@ func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
 	wr.Write(data)
 
 	return wr.Close()
+}
+
+// Start listening for wbesocket events
+func (w *Websocket) Listen(ctx context.Context) error {
+	return w.Receive(ctx, func(ctx context.Context, p *WebsocketResponse) {
+		// Dispatch
+		if w.handlers != nil {
+			w.handlers.dispatch(w, p)
+		}
+	})
+}
+
+func (w *Websocket) HandleFunc(method string, h WebsocketHandlerFunc) WebsocketEventHandlerRemover {
+	if w.handlers == nil {
+		w.handlers = &websocketEventHandlerSet{
+			set: make(map[string][]*websocketEventHandlerNode),
+		}
+	}
+	return w.handlers.add(method, h)
 }
 
 // Receive calls f with messages from the websocket
