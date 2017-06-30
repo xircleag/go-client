@@ -19,6 +19,7 @@ type TestingCredentials struct {
 	ApplicationID string                 `json:"application_id"`
 	ProviderID    string                 `json:"provider_id"`
 	AccountID     string                 `json:"account_id"`
+	APIKey        string                 `json:"api_key"`
 	Key           *TestingCredentialsKey `json:"key"`
 }
 
@@ -40,7 +41,10 @@ func createTestClient() (*Client, error) {
 		return nil, err
 	}
 	var c *TestingCredentials
-	json.Unmarshal(data, &c)
+	err = json.Unmarshal(data, &c)
+	if err != nil {
+		return nil, err
+	}
 
 	ctx := context.Background()
 	return NewClient(ctx, c.ApplicationID, option.WithCredentials(&common.ClientCredentials{

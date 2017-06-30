@@ -1,9 +1,12 @@
 package transport
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/option"
@@ -11,6 +14,22 @@ import (
 	"golang.org/x/net/context"
 	//"golang.org/x/net/context/ctxhttp"
 )
+
+var DefaultTransport http.RoundTripper = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		DualStack: true,
+	}).DialContext,
+	MaxIdleConns:          100,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+
+	// This is used to disable HTTP/2 due to a current nginx bug
+	TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+}
 
 type HTTPTransport struct {
 	Session HTTPSessionMinter
@@ -62,7 +81,7 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, webso
 		o.UserAgent = fmt.Sprintf("Layer Go Client version 0.0.1")
 	}
 
-	// See if we have supplied client credentials
+	// Credentialed client
 	if o.ClientCredentials != nil {
 		o.ClientCredentials.ApplicationID = appID
 
@@ -73,7 +92,7 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, webso
 			ctx:          ctx,
 			userAgent:    o.UserAgent,
 			headers:      o.Headers,
-			base:         http.DefaultTransport,
+			base:         DefaultTransport,
 		}
 
 		return &HTTPTransport{
@@ -82,12 +101,28 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, webso
 		}, nil
 	}
 
+	// Bearer token transport
+	if o.BearerToken != "" {
+		t := bearerTokenTransport{
+			token:     o.BearerToken,
+			baseURL:   baseURL,
+			ctx:       ctx,
+			userAgent: o.UserAgent,
+			headers:   o.Headers,
+			base:      DefaultTransport,
+		}
+
+		return &HTTPTransport{
+			client: &http.Client{Transport: t},
+		}, nil
+	}
+
 	// Fallback to a plain HTTP transport
 	t := httpTransport{
 		ctx:       ctx,
 		userAgent: o.UserAgent,
 		headers:   o.Headers,
-		base:      http.DefaultTransport,
+		base:      DefaultTransport,
 	}
 
 	return &HTTPTransport{
