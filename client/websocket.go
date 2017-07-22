@@ -16,22 +16,22 @@ import (
 )
 
 const (
-	WebsocketMethodCounterRead        = "Method.Counter.read"
-	WebsocketMethodConversationCreate = "Method.Conversation.create"
-	WebsocketMethodMessageCreate      = "Method.Message.create"
-	WebsocketMethodPresenceUpdate     = "Method.Presence.update"
-	WebsocketMethodPresenceSync       = "Method.Presence.sync"
+	WebsocketMethodCounterRead        = "Counter.read"
+	WebsocketMethodConversationCreate = "Conversation.create"
+	WebsocketMethodMessageCreate      = "Message.create"
+	WebsocketMethodPresenceUpdate     = "Presence.update"
+	WebsocketMethodPresenceSync       = "Presence.sync"
 
 	WebsocketSignalTyping = "typing"
 
-	WebsocketChangeConversationCreate          = "Change.ConversationCreate"
-	WebsocektChangeConversationDelete          = "Change.ConversationDelete"
-	WebsocketChangeConversationParticipants    = "Change.ConversationParticipants"
-	WebsocketChangeConversationMetadata        = "Change.ConversationMetadata"
-	WebsocketChangeConversationRecipientStatus = "Change.ConversationRecipientStatus"
-	WebsocketChangeConversationLastMessage     = "Change.ConversationLastMessage"
-	WebsocketChangeMessageCreate               = "Change.MessageCreate"
-	WebsocektChangeMessageDelete               = "Change.MessageDelete"
+	WebsocketChangeConversationCreate          = "Conversation.create"
+	WebsocektChangeConversationDelete          = "Conversation.delete"
+	WebsocketChangeConversationParticipants    = "Conversation.participants"
+	WebsocketChangeConversationMetadata        = "Conversation.metadata"
+	WebsocketChangeConversationRecipientStatus = "Conversation.recipient_status"
+	WebsocketChangeConversationLastMessage     = "Conversation.last_message"
+	WebsocketChangeMessageCreate               = "Message.create"
+	WebsocektChangeMessageDelete               = "Message.delete"
 )
 
 type Websocket struct {
@@ -86,17 +86,17 @@ type WebsocketSignal struct {
 
 // An interface to handle websocket event callbacks
 type WebsocketEventHandler interface {
-	Handle(w *Websocket, r *WebsocketResponse)
+	Handle(w *Websocket, r *WebsocketPacket)
 }
 
 type WebsocketEventHandlerRemover interface {
 	Remove()
 }
 
-type WebsocketHandlerFunc func(*Websocket, *WebsocketResponse)
+type WebsocketHandlerFunc func(*Websocket, *WebsocketPacket)
 
-func (hf WebsocketHandlerFunc) Handle(w *Websocket, r *WebsocketResponse) {
-	hf(w, r)
+func (hf WebsocketHandlerFunc) Handle(w *Websocket, p *WebsocketPacket) {
+	hf(w, p)
 }
 
 type websocketEventHandlerSet struct {
@@ -110,8 +110,8 @@ type websocketEventHandlerNode struct {
 	handler WebsocketEventHandler
 }
 
-func (hn *websocketEventHandlerNode) Handle(w *Websocket, r *WebsocketResponse) {
-	hn.handler.Handle(w, r)
+func (hn *websocketEventHandlerNode) Handle(w *Websocket, p *WebsocketPacket) {
+	hn.handler.Handle(w, p)
 }
 
 func (hn *websocketEventHandlerNode) Remove() {
@@ -146,12 +146,22 @@ func (hs *websocketEventHandlerSet) add(method string, h WebsocketEventHandler) 
 }
 
 // Dispatch events to registered handlers
-func (hs *websocketEventHandlerSet) dispatch(w *Websocket, r *WebsocketResponse) {
+func (hs *websocketEventHandlerSet) dispatch(w *Websocket, p *WebsocketPacket) {
 	hs.Lock()
 	defer hs.Unlock()
 
-	method := strings.ToLower(r.Method)
-	set, ok := hs.set[method]
+	handlerName := ""
+	switch p.Body.(type) {
+	case *WebsocketResponse:
+		r := p.Body.(*WebsocketResponse)
+		handlerName = strings.ToLower(r.Method)
+	case *WebsocketChange:
+		c := p.Body.(*WebsocketChange)
+		handlerName = strings.ToLower(fmt.Sprintf("%s.%s", c.Object.Type, c.Operation))
+	default:
+		handlerName = "Unknown"
+	}
+	set, ok := hs.set[handlerName]
 	if !ok {
 		return
 	}
@@ -163,7 +173,7 @@ func (hs *websocketEventHandlerSet) dispatch(w *Websocket, r *WebsocketResponse)
 		// Create a copy of the pointer
 		hc := h
 		go func() {
-			hc.Handle(w, r)
+			hc.Handle(w, p)
 			wg.Done()
 		}()
 	}
@@ -195,7 +205,11 @@ func (w *Websocket) connect() error {
 		return err
 	}
 	w.conn = ws
-	w.handlers.dispatch(w, &WebsocketResponse{Method: "connected"})
+
+	// Dispatch a connected event
+	w.handlers.dispatch(w, &WebsocketPacket{
+		Body: &WebsocketResponse{Method: "connected"},
+	})
 
 	return nil
 }
@@ -227,7 +241,7 @@ func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
 
 // Start listening for wbesocket events
 func (w *Websocket) Listen(ctx context.Context) error {
-	return w.Receive(ctx, func(ctx context.Context, p *WebsocketResponse) {
+	return w.Receive(ctx, func(ctx context.Context, p *WebsocketPacket) {
 		// Dispatch
 		if w.handlers != nil {
 			w.handlers.dispatch(w, p)
@@ -245,7 +259,7 @@ func (w *Websocket) HandleFunc(method string, h WebsocketHandlerFunc) WebsocketE
 }
 
 // Receive calls f with messages from the websocket
-func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *WebsocketResponse)) error {
+func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *WebsocketPacket)) error {
 	w.wg.Wait()
 
 	if w.conn == nil {
@@ -269,7 +283,7 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 
 		// Decode the response
 		var body json.RawMessage
-		p := WebsocketPacket{Body: &body}
+		p := &WebsocketPacket{Body: &body}
 		if err := json.Unmarshal(res, &p); err != nil {
 			return err
 		}
@@ -280,8 +294,15 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 			if err := json.Unmarshal(body, &r); err != nil {
 				return err
 			}
-			f(ctx, r)
+			p.Body = r
+		case "change":
+			var c *WebsocketChange
+			if err := json.Unmarshal(body, &c); err != nil {
+				return err
+			}
+			p.Body = c
 		}
+		f(ctx, p)
 	}
 
 	return nil

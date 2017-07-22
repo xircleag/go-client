@@ -20,9 +20,12 @@ func TestWebsocketReceive(t *testing.T) {
 	// Wait for messages
 	go func() {
 		ctx := context.Background()
-		err = c.Websocket.Receive(ctx, func(ctx context.Context, packet *WebsocketResponse) {
-			if packet.RequestID == "1" {
-				confirm <- true
+		err = c.Websocket.Receive(ctx, func(ctx context.Context, p *WebsocketPacket) {
+			switch p.Body.(type) {
+			case *WebsocketResponse:
+				if p.Body.(*WebsocketResponse).RequestID == "1" {
+					confirm <- true
+				}
 			}
 		})
 
@@ -58,9 +61,12 @@ func TestWebsocketEventHandler(t *testing.T) {
 	confirm := make(chan bool)
 
 	// Setup event handlers
-	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, r *WebsocketResponse) {
-		if r.RequestID == "1" {
-			confirm <- true
+	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, p *WebsocketPacket) {
+		switch p.Body.(type) {
+		case *WebsocketResponse:
+			if p.Body.(*WebsocketResponse).RequestID == "1" {
+				confirm <- true
+			}
 		}
 	})
 
@@ -95,15 +101,21 @@ func TestWebsocketMultipleEventHandler(t *testing.T) {
 	confirm := make(chan bool, 2)
 
 	// Setup event handlers
-	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, r *WebsocketResponse) {
-		if r.RequestID == "1" {
-			confirm <- true
+	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, p *WebsocketPacket) {
+		switch p.Body.(type) {
+		case *WebsocketResponse:
+			if p.Body.(*WebsocketResponse).RequestID == "1" {
+				confirm <- true
+			}
 		}
 	})
 
-	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, r *WebsocketResponse) {
-		if r.RequestID == "1" {
-			confirm <- true
+	c.Websocket.HandleFunc(WebsocketMethodCounterRead, func(w *Websocket, p *WebsocketPacket) {
+		switch p.Body.(type) {
+		case *WebsocketResponse:
+			if p.Body.(*WebsocketResponse).RequestID == "1" {
+				confirm <- true
+			}
 		}
 	})
 
