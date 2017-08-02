@@ -120,7 +120,6 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation message URL: %v", err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", convo))
 	u = convo.client.baseURL.ResolveReference(u)
 
 	// Create the request
@@ -214,7 +213,6 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from *string) ([]*M
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation message URL: %v", err)
 	}
-	fmt.Println(fmt.Sprintf("%+v", convo))
 	u = convo.client.baseURL.ResolveReference(u)
 
 	// Create the request
