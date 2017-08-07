@@ -80,6 +80,7 @@ type ConversationIterator struct {
 	client        *Client
 	conversations []*Conversation
 	current       int
+	pageSize      int
 	from          *string
 	sort          *string
 }
@@ -88,7 +89,12 @@ type ConversationIterator struct {
 func (it *ConversationIterator) Next() (*Conversation, error) {
 	it.current++
 	if it.current > len(it.conversations) {
-		// First try to get a new page
+		// If we're under our page size, we're done
+		if it.current < it.pageSize {
+			return nil, iterator.Done
+		}
+
+		// We have more conversations, try to get them
 		conversations, err := it.client.ConversationsFrom(it.ctx, it.sort, it.from)
 		if err != nil {
 			return nil, err
@@ -177,6 +183,7 @@ func (c *Client) Conversations(ctx context.Context, sort *string) (*Conversation
 		conversations: conversations,
 		sort:          sort,
 		from:          &from,
+		pageSize:      100,
 	}, nil
 }
 
