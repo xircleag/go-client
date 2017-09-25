@@ -31,7 +31,53 @@ func TestGetConversations(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	convos, err := c.Conversations(ctx, nil)
+	convos, err := c.Conversations(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		convo, err := convos.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(fmt.Sprintf("%+v", convo))
+	}
+}
+
+func TestGetConversationsSortedByCreatedAt(t *testing.T) {
+	c, err := createTestClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	convos, err := c.Conversations(ctx, "created_at")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		convo, err := convos.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(fmt.Sprintf("%+v", convo))
+	}
+}
+
+func TestGetConversationsSortedByLastMessage(t *testing.T) {
+	c, err := createTestClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	convos, err := c.Conversations(ctx, "last_message")
 	if err != nil {
 		t.Fatal(err)
 	}

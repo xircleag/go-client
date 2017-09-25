@@ -41,7 +41,7 @@ type Message struct {
 	Parts []*MessagePart `json:"parts,omitempty"`
 
 	// The time at which the message was sent.
-	SentAt time.Time `json:"-"`
+	SentAt time.Time `json:"sent_at"`
 
 	// The identity of the message sender.
 	Sender *BasicIdentity `json:"sender,omitempty"`
@@ -178,8 +178,8 @@ type MessageIterator struct {
 	conversation *Conversation
 	messages     []*Message
 	current      int
-	from         *string
-	sort         *string
+	from         string
+	sort         string
 }
 
 // Next returns the next slice of messages
@@ -194,7 +194,7 @@ func (it *MessageIterator) Next() (*Message, error) {
 		if len(messages) > 0 {
 			it.messages = messages
 			from := messages[len(messages)-1].ID
-			it.from = &from
+			it.from = from
 			it.current = 0
 			return it.messages[0], nil
 		}
@@ -206,7 +206,7 @@ func (it *MessageIterator) Next() (*Message, error) {
 }
 
 // MessagesFrom gets all messages on a conversation from the specified offset
-func (convo *Conversation) MessagesFrom(ctx context.Context, from *string) ([]*Message, error) {
+func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Message, error) {
 	// Create the request URL
 	convoID := common.UUIDFromLayerURL(convo.ID)
 	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convoID))
@@ -222,8 +222,8 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from *string) ([]*M
 	}
 	req = req.WithContext(ctx)
 	q := req.URL.Query()
-	if from != nil {
-		q.Add("from_id", *from)
+	if from != "" {
+		q.Add("from_id", from)
 	}
 	q.Add("page_size", "100")
 	req.URL.RawQuery = q.Encode()
@@ -255,7 +255,7 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from *string) ([]*M
 
 // Messages gets all messages on a conversation
 func (convo *Conversation) Messages(ctx context.Context) (*MessageIterator, error) {
-	messages, err := convo.MessagesFrom(ctx, nil)
+	messages, err := convo.MessagesFrom(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +267,6 @@ func (convo *Conversation) Messages(ctx context.Context) (*MessageIterator, erro
 		ctx:          ctx,
 		conversation: convo,
 		messages:     messages,
-		from:         &from,
+		from:         from,
 	}, nil
 }

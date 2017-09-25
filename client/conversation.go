@@ -27,7 +27,7 @@ type Conversation struct {
 	MessagesURL string `json:"messages_url,omitempty"`
 
 	// The time at which the conversation was initially created.
-	CreatedAt time.Time `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// LastMessage is a message object representing the last message sent in the
 	// conversation.
@@ -81,8 +81,8 @@ type ConversationIterator struct {
 	conversations []*Conversation
 	current       int
 	pageSize      int
-	from          *string
-	sort          *string
+	from          string
+	sort          string
 }
 
 // Next returns the next slice of conversations
@@ -102,7 +102,7 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 		if len(conversations) > 0 {
 			it.conversations = conversations
 			from := conversations[len(conversations)-1].ID
-			it.from = &from
+			it.from = from
 			it.current = 0
 			return it.conversations[0], nil
 		}
@@ -115,7 +115,7 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 }
 
 // Conversations gets all conversations for the user specified by the client connection, with a starting ID used for paging and iterations
-func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *string) ([]*Conversation, error) {
+func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string) ([]*Conversation, error) {
 	// Create the request URL
 	u, err := c.buildConversationURL("")
 	if err != nil {
@@ -129,14 +129,15 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *stri
 	}
 	req = req.WithContext(ctx)
 	q := req.URL.Query()
-	if sort != nil {
-		q.Add("sort_by", *sort)
+	if sort != "" {
+		q.Add("sort_by", sort)
 	}
-	if from != nil {
-		q.Add("from_id", *from)
+	if from != "" {
+		q.Add("from_id", from)
 	}
 	q.Add("page_size", "100")
 	req.URL.RawQuery = q.Encode()
+	fmt.Println(fmt.Sprintf("%+v", req))
 
 	// Send the request
 	res, err := c.transport.Do(req)
@@ -164,14 +165,16 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort *string, from *stri
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
 
+	//fmt.Println(fmt.Sprintf("LENGTH: %+v", len(conversations)))
+	//fmt.Println(fmt.Sprintf("%+v", string(body)))
 	return conversations, nil
 }
 
 // Conversations gets all conversations for the user specified by the client connection
-func (c *Client) Conversations(ctx context.Context, sort *string) (*ConversationIterator, error) {
-	conversations, err := c.ConversationsFrom(ctx, sort, nil)
+func (c *Client) Conversations(ctx context.Context, sort string) (*ConversationIterator, error) {
+	conversations, err := c.ConversationsFrom(ctx, sort, "")
 	if err != nil {
-		return nil, iterator.Done
+		return nil, err
 	}
 	if len(conversations) <= 0 {
 		return nil, fmt.Errorf("No conversations")
@@ -182,7 +185,7 @@ func (c *Client) Conversations(ctx context.Context, sort *string) (*Conversation
 		client:        c,
 		conversations: conversations,
 		sort:          sort,
-		from:          &from,
+		from:          from,
 		pageSize:      100,
 	}, nil
 }

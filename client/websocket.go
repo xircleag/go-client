@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -56,9 +55,9 @@ type WebsocketChange struct {
 }
 
 type WebsocketChangeObject struct {
-	Type string   `json:"type"`
-	ID   string   `json:"id"`
-	URL  *url.URL `json:"url"`
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	URL  string `json:"url"`
 }
 
 type WebsocketChangeData struct {
@@ -301,6 +300,21 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 				return err
 			}
 			p.Body = c
+			objectJSON, err := json.Marshal(c.Data)
+			if err == nil {
+				switch strings.ToLower(c.Object.Type) {
+				case "conversation":
+					var conversation *Conversation
+					if err = json.Unmarshal(objectJSON, &conversation); err == nil {
+						c.Data = conversation
+					}
+				case "message":
+					var message *Message
+					if err = json.Unmarshal(objectJSON, &message); err == nil {
+						c.Data = message
+					}
+				}
+			}
 		}
 		f(ctx, p)
 	}

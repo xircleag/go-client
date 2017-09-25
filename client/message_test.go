@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/layerhq/go-client/iterator"
@@ -42,6 +43,25 @@ func TestSendTextMessage(t *testing.T) {
 	t.Logf("Created message with ID %s", msg.ID)
 }
 
+func TestSendTextMessageExistingConversation(t *testing.T) {
+	c, err := createTestClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	convo, err := c.Conversation(ctx, "2ab5971a-bb34-45b9-bada-ed86f25c6327")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := convo.SendTextMessage(ctx, "Testing", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Created message with ID %s", msg.ID)
+}
+
 func TestGetMessages(t *testing.T) {
 	c, err := createTestClient()
 	if err != nil {
@@ -49,7 +69,7 @@ func TestGetMessages(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	convos, err := c.Conversations(ctx, nil)
+	convos, err := c.Conversations(ctx, "")
 	convo, err := convos.Next()
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +86,13 @@ func TestGetMessages(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println(fmt.Sprintf("%+v", message))
+		for _, part := range message.Parts {
+			if part.MimeType == "text/plain" {
+				fmt.Println(fmt.Sprintf("%+s %+v: %s",
+					message.SentAt.Format("2006-01-02T15:04:05Z07:00"),
+					message.Sender,
+					strings.TrimSpace(part.Body)))
+			}
+		}
 	}
 }
