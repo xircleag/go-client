@@ -2,12 +2,24 @@
 package option
 
 import (
+	"net/url"
+
 	"github.com/layerhq/go-client/common"
 )
 
 // A ClientOption is an option for Layer API client
 type ClientOption interface {
 	Apply(*common.DialSettings)
+}
+
+func OverrideURL(u *url.URL) ClientOption {
+	return overrideURL{ u }
+}
+
+type overrideURL struct { baseURL *url.URL}
+
+func (o overrideURL) Apply(s *common.DialSettings) {
+	s.BaseURL = o.baseURL
 }
 
 // WithHeaders returns a ClientOption that specified a header map
