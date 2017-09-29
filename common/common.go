@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
+var uuidRE *regexp.Regexp = regexp.MustCompile("^[a-z0-9]{8}-[a-z0-9]{4}-[1-5][a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{12}$")
+
 // ValidateUUID confirms a given ID is in a valid UUID format
 func ValidateUUID(id string) error {
-	format := "^[a-z0-9]{8}-[a-z0-9]{4}-[1-5][a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{12}$"
-	re := regexp.MustCompile(format)
-	if !re.MatchString(id) {
+	if !uuidRE.MatchString(id) {
 		return fmt.Errorf("Invalid UUID %s", id)
 	}
 
