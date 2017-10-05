@@ -10,47 +10,82 @@ import (
 	"golang.org/x/net/context"
 )
 
-type Client struct {
-	Websocket    *Websocket
-	baseURL      *url.URL
-	websocketURL *url.URL
-	appID        string
-	transport    *transport.HTTPTransport
-}
-
 type NonceRequest struct {
 	Nonce string `json:"nonce"`
 }
 
+type RESTClient struct {
+	baseURL   *url.URL
+	appID     string
+	transport *transport.HTTPTransport
+}
+
 // NewClient creates a new Layer Client API client
-func NewClient(ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
+func NewRESTClient(ctx context.Context, appID string, options ...option.ClientOption) (*RESTClient, error) {
 	u, err := url.Parse("https://api.layer.com")
 	if err != nil {
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
 
-	wu, err := url.Parse("wss://websockets.layer.com")
-	if err != nil {
-		return nil, fmt.Errorf("Error building websocket URL: %v", err)
-	}
-
 	headers := map[string][]string{
-		"Accept":       {"application/vnd.layer+json; version=2.0"},
+		"Accept":       {"application/vnd.layer+json; version=3.0"},
 		"Content-Type": {"application/json"},
 	}
 
 	options = append(options, option.WithHeaders(headers))
 
-	t, err := transport.NewHTTPTransport(ctx, appID, u, wu, options...)
+	t, err := transport.NewHTTPTransport(ctx, appID, u, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &Client{
-		baseURL:      u,
-		websocketURL: wu,
-		appID:        appID,
-		transport:    t,
+	c := &RESTClient{
+		baseURL:   u,
+		appID:     appID,
+		transport: t,
+	}
+
+	return c, nil
+}
+
+type WebsocketClient struct {
+	Websocket *Websocket
+	baseURL   *url.URL
+	appID     string
+	transport *transport.HTTPTransport
+}
+
+func NewWebsocketClient(ctx context.Context, appID string, options ...option.ClientOption) (*WebsocketClient, error) {
+	wu, err := url.Parse("wss://websockets.layer.com")
+	if err != nil {
+		return nil, fmt.Errorf("Error building websocket URL: %v", err)
+	}
+
+	return NewWebsocketTestClient(ctx, appID, *wu, options...)
+}
+
+func NewWebsocketTestClient(ctx context.Context, appID string, baseURL url.URL, options ...option.ClientOption) (*WebsocketClient, error) {
+	u, err := url.Parse("https://api.layer.com")
+	if err != nil {
+		return nil, fmt.Errorf("Error building base URL: %v", err)
+	}
+
+	headers := map[string][]string{
+		"Accept":       {"application/vnd.layer+json; version=3.0"},
+		"Content-Type": {"application/json"},
+	}
+
+	options = append(options, option.WithHeaders(headers))
+
+	t, err := transport.NewHTTPTransport(ctx, appID, u, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &WebsocketClient{
+		baseURL:   &baseURL,
+		appID:     appID,
+		transport: t,
 	}
 	c.Websocket = &Websocket{client: c}
 
@@ -58,11 +93,11 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 }
 
 // Return the base URL
-func (c *Client) BaseURL() *url.URL {
+func (c *RESTClient) BaseURL() *url.URL {
 	return c.baseURL
 }
 
 // Return the websocket URL
-func (c *Client) WebsocketURL() *url.URL {
-	return c.websocketURL
+func (c *WebsocketClient) BaseURL() *url.URL {
+	return c.baseURL
 }

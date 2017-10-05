@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,7 +35,7 @@ const (
 )
 
 type Websocket struct {
-	client   *Client
+	client   *WebsocketClient
 	dialer   *websocket.Dialer
 	conn     *websocket.Conn
 	handlers *websocketEventHandlerSet
@@ -160,6 +161,7 @@ func (hs *websocketEventHandlerSet) dispatch(w *Websocket, p *WebsocketPacket) {
 	default:
 		handlerName = "Unknown"
 	}
+	log.Println("dispatching " + handlerName)
 	set, ok := hs.set[handlerName]
 	if !ok {
 		return
@@ -186,7 +188,7 @@ func (w *Websocket) connect() error {
 
 	headers := http.Header{
 		"Origin":                 {"http://local.host:80"},
-		"Sec-WebSocket-Protocol": {"layer-1.0"},
+		"Sec-WebSocket-Protocol": {"layer-3.0"},
 	}
 
 	w.dialer = &websocket.Dialer{
@@ -195,12 +197,14 @@ func (w *Websocket) connect() error {
 
 	token, err := w.client.transport.Session.Token()
 	if err != nil {
+		log.Println("Error getting token")
 		return err
 	}
 
-	u := fmt.Sprintf("%s?session_token=%s", w.client.websocketURL.String(), token)
+	u := fmt.Sprintf("%s?session_token=%s", w.client.baseURL.String(), token)
 	ws, _, err := w.dialer.Dial(u, headers)
 	if err != nil {
+		log.Println("error dialing " + err.Error())
 		return err
 	}
 	w.conn = ws

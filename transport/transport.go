@@ -70,7 +70,7 @@ func (t httpTransport) Token() (string, error) {
 	return "", fmt.Errorf("This transport does not support authentication")
 }
 
-func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, websocketURL *url.URL, opts ...option.ClientOption) (*HTTPTransport, error) {
+func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, opts ...option.ClientOption) (*HTTPTransport, error) {
 	var o common.DialSettings
 	for _, opt := range opts {
 		opt.Apply(&o)
@@ -86,13 +86,12 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, webso
 		o.ClientCredentials.ApplicationID = appID
 
 		t := clientCredentialTransport{
-			credentials:  o.ClientCredentials,
-			baseURL:      baseURL,
-			websocketURL: websocketURL,
-			ctx:          ctx,
-			userAgent:    o.UserAgent,
-			headers:      o.Headers,
-			base:         DefaultTransport,
+			credentials: o.ClientCredentials,
+			baseURL:     baseURL,
+			ctx:         ctx,
+			userAgent:   o.UserAgent,
+			headers:     o.Headers,
+			base:        DefaultTransport,
 		}
 
 		return &HTTPTransport{

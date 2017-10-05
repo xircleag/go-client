@@ -12,6 +12,7 @@ import (
 
 	"github.com/layerhq/go-client/iterator"
 
+	uuid "github.com/satori/go.uuid"
 	"golang.org/x/net/context"
 )
 
@@ -49,10 +50,10 @@ type Conversation struct {
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 
 	// Internal reference to the client object.
-	client *Client `json:"-"`
+	client *RESTClient `json:"-"`
 }
 
-func (c *Client) buildConversationURL(id string) (*url.URL, error) {
+func (c *RESTClient) buildConversationURL(id string) (*url.URL, error) {
 	var err error
 	var u *url.URL
 	if id != "" {
@@ -77,7 +78,7 @@ type conversationCreate struct {
 // ConversationIterator returns a series of conversations
 type ConversationIterator struct {
 	ctx           context.Context
-	client        *Client
+	client        *RESTClient
 	conversations []*Conversation
 	current       int
 	pageSize      int
@@ -115,7 +116,7 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 }
 
 // Conversations gets all conversations for the user specified by the client connection, with a starting ID used for paging and iterations
-func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string) ([]*Conversation, error) {
+func (c *RESTClient) ConversationsFrom(ctx context.Context, sort string, from string) ([]*Conversation, error) {
 	// Create the request URL
 	u, err := c.buildConversationURL("")
 	if err != nil {
@@ -171,7 +172,7 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string
 }
 
 // Conversations gets all conversations for the user specified by the client connection
-func (c *Client) Conversations(ctx context.Context, sort string) (*ConversationIterator, error) {
+func (c *RESTClient) Conversations(ctx context.Context, sort string) (*ConversationIterator, error) {
 	conversations, err := c.ConversationsFrom(ctx, sort, "")
 	if err != nil {
 		return nil, err
@@ -191,7 +192,7 @@ func (c *Client) Conversations(ctx context.Context, sort string) (*ConversationI
 }
 
 // Conversation gets a single conversation for the user specified by the client connection
-func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, error) {
+func (c *RESTClient) Conversation(ctx context.Context, id string) (*Conversation, error) {
 	u, err := c.buildConversationURL(id)
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation URL: %v", err)
@@ -233,8 +234,33 @@ func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, er
 	return conversation, nil
 }
 
+// CreateConversation creates a conversation for the user specified by the client connection and returns the request id the user can look for on their receive channel
+func (c *WebsocketClient) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (string, error) {
+	// Create the request object
+	cc := &conversationCreate{
+		Participants: participants,
+		Distinct:     distinct,
+		Metadata:     metadata,
+	}
+
+	reqID := uuid.NewV1().String()
+
+	packet := &WebsocketPacket{
+		Type: "request",
+		Body: WebsocketRequest{
+			Method:    WebsocketChangeConversationCreate,
+			RequestID: reqID,
+			Data:      cc,
+		},
+	}
+
+	err := c.Websocket.Send(ctx, packet)
+
+	return reqID, err
+}
+
 // CreateConversation creates a conversation for the user specified by the client connection
-func (c *Client) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
+func (c *RESTClient) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
 		Participants: participants,

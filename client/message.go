@@ -11,6 +11,7 @@ import (
 
 	"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/iterator"
+	uuid "github.com/satori/go.uuid"
 
 	"golang.org/x/net/context"
 )
@@ -99,6 +100,36 @@ type MessageNotification struct {
 type messageCreate struct {
 	Parts        []*MessagePart       `json:"parts"`
 	Notification *MessageNotification `json:"notification,omitempty"`
+}
+
+// SendTextMessage is a helper function to send a single-part plaintext message
+func (c *WebsocketClient) SendTextMessage(ctx context.Context, convoID string, message string, notification *MessageNotification) (string, error) {
+	msg := plaintextMessage(message)
+	return c.SendMessage(ctx, convoID, msg.Parts, notification)
+}
+
+// SendMessage sends a message on the current conversation
+func (c *WebsocketClient) SendMessage(ctx context.Context, convoID string, parts []*MessagePart, notification *MessageNotification) (string, error) {
+	mc := &messageCreate{
+		Parts:        parts,
+		Notification: notification,
+	}
+
+	reqID := uuid.NewV1().String()
+
+	packet := &WebsocketPacket{
+		Type: "request",
+		Body: WebsocketRequest{
+			Method:    WebsocketChangeMessageCreate,
+			RequestID: reqID,
+			ObjectID:  convoID,
+			Data:      mc,
+		},
+	}
+
+	err := c.Websocket.Send(ctx, packet)
+
+	return reqID, err
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message
