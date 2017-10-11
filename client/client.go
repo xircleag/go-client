@@ -8,6 +8,9 @@ import (
 	"github.com/layerhq/go-client/transport"
 
 	"golang.org/x/net/context"
+	"time"
+	"errors"
+	"github.com/satori/go.uuid"
 )
 
 type NonceRequest struct {
@@ -19,6 +22,8 @@ type RESTClient struct {
 	appID     string
 	transport *transport.HTTPTransport
 }
+
+var errTimedOut = errors.New("Operation timed out.")
 
 // NewClient creates a new Layer Client API client
 func NewRESTClient(ctx context.Context, appID string, options ...option.ClientOption) (*RESTClient, error) {
@@ -100,4 +105,19 @@ func (c *RESTClient) BaseURL() *url.URL {
 // Return the websocket URL
 func (c *WebsocketClient) BaseURL() *url.URL {
 	return c.baseURL
+}
+
+func newRequestID() string {
+	return uuid.NewV1().String()
+}
+
+func getTimer(ctx context.Context) (timer *time.Timer) {
+	deadline, present := ctx.Deadline()
+	if present {
+		timer = time.NewTimer(deadline.Sub(time.Now()))
+	} else {
+		// default timeout of 30 seconds
+		timer = time.NewTimer(time.Duration(30) * time.Second)
+	}
+	return
 }

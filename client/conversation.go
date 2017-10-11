@@ -12,7 +12,6 @@ import (
 
 	"github.com/layerhq/go-client/iterator"
 
-	uuid "github.com/satori/go.uuid"
 	"golang.org/x/net/context"
 )
 
@@ -166,8 +165,6 @@ func (c *RESTClient) ConversationsFrom(ctx context.Context, sort string, from st
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
 
-	//fmt.Println(fmt.Sprintf("LENGTH: %+v", len(conversations)))
-	//fmt.Println(fmt.Sprintf("%+v", string(body)))
 	return conversations, nil
 }
 
@@ -235,7 +232,7 @@ func (c *RESTClient) Conversation(ctx context.Context, id string) (*Conversation
 }
 
 // CreateConversation creates a conversation for the user specified by the client connection and returns the request id the user can look for on their receive channel
-func (c *WebsocketClient) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (string, error) {
+func (c *WebsocketClient) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
 		Participants: participants,
@@ -243,7 +240,7 @@ func (c *WebsocketClient) CreateConversation(ctx context.Context, participants [
 		Metadata:     metadata,
 	}
 
-	reqID := uuid.NewV1().String()
+	reqID := newRequestID()
 
 	packet := &WebsocketPacket{
 		Type: "request",
@@ -254,9 +251,33 @@ func (c *WebsocketClient) CreateConversation(ctx context.Context, participants [
 		},
 	}
 
-	err := c.Websocket.Send(ctx, packet)
+	result := make(chan *Conversation)
 
-	return reqID, err
+	// register a handler for the response
+	unsub := c.Websocket.HandleFunc(WebsocketChangeConversationCreate, func(w *Websocket, p *WebsocketPacket) {
+		resp, ok := p.Body.(*WebsocketResponse)
+		if !ok || resp.RequestID != reqID {
+			return
+		}
+
+		conversation, _ := resp.Data.(*Conversation)
+		result <- conversation
+	})
+	defer unsub.Remove()
+
+	timer := getTimer(ctx)
+
+	if err := c.Websocket.Send(ctx, packet); err != nil {
+		return nil, err
+	}
+
+	var conversation *Conversation
+	select {
+	case conversation = <-result:
+		return conversation, nil
+	case <-timer.C:
+		return nil, errTimedOut
+	}
 }
 
 // CreateConversation creates a conversation for the user specified by the client connection

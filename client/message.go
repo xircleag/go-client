@@ -11,7 +11,6 @@ import (
 
 	"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/iterator"
-	uuid "github.com/satori/go.uuid"
 
 	"golang.org/x/net/context"
 )
@@ -103,19 +102,19 @@ type messageCreate struct {
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message
-func (c *WebsocketClient) SendTextMessage(ctx context.Context, convoID string, message string, notification *MessageNotification) (string, error) {
+func (c *WebsocketClient) SendTextMessage(ctx context.Context, convoID string, message string, notification *MessageNotification) (*Message, error) {
 	msg := plaintextMessage(message)
 	return c.SendMessage(ctx, convoID, msg.Parts, notification)
 }
 
 // SendMessage sends a message on the current conversation
-func (c *WebsocketClient) SendMessage(ctx context.Context, convoID string, parts []*MessagePart, notification *MessageNotification) (string, error) {
+func (c *WebsocketClient) SendMessage(ctx context.Context, convoID string, parts []*MessagePart, notification *MessageNotification) (*Message, error) {
 	mc := &messageCreate{
 		Parts:        parts,
 		Notification: notification,
 	}
 
-	reqID := uuid.NewV1().String()
+	reqID := newRequestID()
 
 	packet := &WebsocketPacket{
 		Type: "request",
@@ -127,9 +126,33 @@ func (c *WebsocketClient) SendMessage(ctx context.Context, convoID string, parts
 		},
 	}
 
-	err := c.Websocket.Send(ctx, packet)
+	result := make(chan *Message)
 
-	return reqID, err
+	// register a handler for the response
+	unsub := c.Websocket.HandleFunc(WebsocketChangeMessageCreate, func(w *Websocket, p *WebsocketPacket) {
+		resp, ok := p.Body.(*WebsocketResponse)
+		if !ok || resp.RequestID != reqID {
+			return
+		}
+
+		message, _ := resp.Data.(*Message)
+		result <- message
+	})
+	defer unsub.Remove()
+
+	timer := getTimer(ctx)
+
+	if err := c.Websocket.Send(ctx, packet); err != nil {
+		return nil, err
+	}
+
+	var message *Message
+	select {
+	case message = <-result:
+		return message, nil
+	case <-timer.C:
+		return nil, errTimedOut
+	}
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message

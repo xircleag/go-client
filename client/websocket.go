@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"golang.org/x/net/context"
+	"github.com/buger/jsonparser"
 )
 
 const (
@@ -25,13 +26,14 @@ const (
 	WebsocketSignalTyping = "typing"
 
 	WebsocketChangeConversationCreate          = "Conversation.create"
-	WebsocektChangeConversationDelete          = "Conversation.delete"
+	WebsocketChangeConversationDelete          = "Conversation.delete"
 	WebsocketChangeConversationParticipants    = "Conversation.participants"
 	WebsocketChangeConversationMetadata        = "Conversation.metadata"
+	WebsocketChangeConversationMarkAllRead	   = "Conversation.mark_all_read"
 	WebsocketChangeConversationRecipientStatus = "Conversation.recipient_status"
 	WebsocketChangeConversationLastMessage     = "Conversation.last_message"
 	WebsocketChangeMessageCreate               = "Message.create"
-	WebsocektChangeMessageDelete               = "Message.delete"
+	WebsocketChangeMessageDelete               = "Message.delete"
 )
 
 type Websocket struct {
@@ -39,7 +41,7 @@ type Websocket struct {
 	dialer   *websocket.Dialer
 	conn     *websocket.Conn
 	handlers *websocketEventHandlerSet
-	wg       sync.WaitGroup
+	sync.RWMutex
 }
 
 type WebsocketPacket struct {
@@ -161,7 +163,7 @@ func (hs *websocketEventHandlerSet) dispatch(w *Websocket, p *WebsocketPacket) {
 	default:
 		handlerName = "Unknown"
 	}
-	log.Println("dispatching " + handlerName)
+
 	set, ok := hs.set[handlerName]
 	if !ok {
 		return
@@ -181,28 +183,29 @@ func (hs *websocketEventHandlerSet) dispatch(w *Websocket, p *WebsocketPacket) {
 	wg.Wait()
 }
 
-func (w *Websocket) connect() error {
-	// TODO: Add a mutex
-	w.wg.Add(1)
-	defer w.wg.Done()
+var wsHeaders = http.Header{
+	"Origin":                 {"http://local.host:80"},
+	"Sec-WebSocket-Protocol": {"layer-3.0"},
+}
 
-	headers := http.Header{
-		"Origin":                 {"http://local.host:80"},
-		"Sec-WebSocket-Protocol": {"layer-3.0"},
+func (w *Websocket) connect() error {
+	if w.conn != nil {
+		return nil
 	}
 
+	w.Lock()
+	defer w.Unlock()
 	w.dialer = &websocket.Dialer{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
 	token, err := w.client.transport.Session.Token()
 	if err != nil {
-		log.Println("Error getting token")
 		return err
 	}
 
 	u := fmt.Sprintf("%s?session_token=%s", w.client.baseURL.String(), token)
-	ws, _, err := w.dialer.Dial(u, headers)
+	ws, _, err := w.dialer.Dial(u, wsHeaders)
 	if err != nil {
 		log.Println("error dialing " + err.Error())
 		return err
@@ -219,19 +222,16 @@ func (w *Websocket) connect() error {
 
 // Send writes a websocket packet
 func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
-	w.wg.Wait()
-
-	if w.conn == nil {
-		err := w.connect()
-		if err != nil {
-			return err
-		}
+	if err := w.connect(); err != nil {
+		return err
 	}
 
+	w.RLock()
 	wr, err := w.conn.NextWriter(websocket.TextMessage)
 	if err != nil {
 		return err
 	}
+	w.RUnlock()
 
 	data, err := json.Marshal(p)
 	if err != nil {
@@ -261,15 +261,10 @@ func (w *Websocket) HandleFunc(method string, h WebsocketHandlerFunc) WebsocketE
 	return w.handlers.add(method, h)
 }
 
-// Receive calls f with messages from the websocket
+// Receive calls f with messages from the websocket, note this blocks until an error is encountered
 func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *WebsocketPacket)) error {
-	w.wg.Wait()
-
-	if w.conn == nil {
-		err := w.connect()
-		if err != nil {
-			return err
-		}
+	if err := w.connect(); err != nil {
+		return err
 	}
 
 	for {
@@ -291,13 +286,29 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 			return err
 		}
 
-		switch p.Type {
+		switch strings.ToLower(p.Type) {
 		case "response":
-			var r *WebsocketResponse
+			var data json.RawMessage
+			r := &WebsocketResponse{Data: &data}
 			if err := json.Unmarshal(body, &r); err != nil {
 				return err
 			}
 			p.Body = r
+
+			id, err := jsonparser.GetString(*r.Data.(*json.RawMessage), "id")
+			objectType := strings.ToLower(id[9:])
+			switch {
+			case strings.HasPrefix(objectType, "conversations"):
+				var conversation *Conversation
+				if err = json.Unmarshal(*r.Data.(*json.RawMessage), &conversation); err == nil {
+					r.Data = conversation
+				}
+			case strings.HasPrefix(objectType, "messages"):
+				var message *Message
+				if err = json.Unmarshal(*r.Data.(*json.RawMessage), &message); err == nil {
+					r.Data = message
+				}
+			}
 		case "change":
 			var c *WebsocketChange
 			if err := json.Unmarshal(body, &c); err != nil {
