@@ -32,6 +32,10 @@ func NewRESTClient(ctx context.Context, appID string, options ...option.ClientOp
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
 
+	return NewRESTTestClient(ctx, u, appID, options...)
+}
+
+func NewRESTTestClient(ctx context.Context, u *url.URL, appID string, options ...option.ClientOption) (*RESTClient, error) {
 	headers := map[string][]string{
 		"Accept":       {"application/vnd.layer+json; version=3.0"},
 		"Content-Type": {"application/json"},
@@ -66,10 +70,10 @@ func NewWebsocketClient(ctx context.Context, appID string, options ...option.Cli
 		return nil, fmt.Errorf("Error building websocket URL: %v", err)
 	}
 
-	return NewWebsocketTestClient(ctx, appID, *wu, options...)
+	return NewWebsocketTestClient(ctx, *wu, appID, options...)
 }
 
-func NewWebsocketTestClient(ctx context.Context, appID string, baseURL url.URL, options ...option.ClientOption) (*WebsocketClient, error) {
+func NewWebsocketTestClient(ctx context.Context, baseURL url.URL, appID string, options ...option.ClientOption) (*WebsocketClient, error) {
 	u, err := url.Parse("https://api.layer.com")
 	if err != nil {
 		return nil, fmt.Errorf("Error building base URL: %v", err)

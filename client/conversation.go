@@ -49,7 +49,7 @@ type Conversation struct {
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 
 	// Internal reference to the client object.
-	client *RESTClient `json:"-"`
+	Client *RESTClient `json:"-"`
 }
 
 func (c *RESTClient) buildConversationURL(id string) (*url.URL, error) {
@@ -110,7 +110,7 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 		// No more
 		return nil, iterator.Done
 	}
-	it.conversations[it.current-1].client = it.client
+	it.conversations[it.current-1].Client = it.client
 	return it.conversations[it.current-1], nil
 }
 
@@ -227,7 +227,7 @@ func (c *RESTClient) Conversation(ctx context.Context, id string) (*Conversation
 	if err := json.Unmarshal(body, &conversation); err != nil {
 		return nil, fmt.Errorf("Error parsing conversation JSON: %v", err)
 	}
-	conversation.client = c
+	conversation.Client = c
 	return conversation, nil
 }
 
@@ -335,7 +335,7 @@ func (c *RESTClient) CreateConversation(ctx context.Context, participants []stri
 	if err := json.Unmarshal(body, &conversation); err != nil {
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
-	conversation.client = c
+	conversation.Client = c
 	return conversation, nil
 }
 
@@ -345,7 +345,7 @@ func (c *RESTClient) CreateConversation(ctx context.Context, participants []stri
 // should leave the conversation, and is only applicable for a mode of "my_devices".
 func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool) error {
 	// Create the request URL
-	u, err := convo.client.buildConversationURL(convo.ID)
+	u, err := convo.Client.buildConversationURL(convo.ID)
 	if err != nil {
 		return fmt.Errorf("Error building conversation URL: %v", err)
 	}
@@ -368,7 +368,7 @@ func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool)
 	req.URL.RawQuery = q.Encode()
 
 	// Send the request
-	res, err := convo.client.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("Error deleting conversation: %v", err)
 	}

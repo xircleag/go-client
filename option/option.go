@@ -23,17 +23,6 @@ func (o overrideURL) Apply(s *common.DialSettings) {
 }
 
 // WithHeaders returns a ClientOption that specified a header map
-func OverrideURL(baseURL *url.URL) ClientOption {
-	return overrideURL{baseURL: baseURL}
-}
-
-type overrideURL struct{ baseURL *url.URL }
-
-func (o overrideURL) Apply(s *common.DialSettings) {
-	s.BaseURL = o.baseURL
-}
-
-// WithHeaders returns a ClientOption that specified a header map
 func WithHeaders(headers map[string][]string) ClientOption {
 	return withHeaders{headers}
 }

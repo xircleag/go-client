@@ -94,6 +94,7 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, opts 
 			base:        DefaultTransport,
 		}
 
+
 		return &HTTPTransport{
 			Session: t,
 			client:  &http.Client{Transport: t},

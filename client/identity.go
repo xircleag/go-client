@@ -23,21 +23,8 @@ type Identity struct {
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
-<<<<<<< HEAD
-type BasicIdentity struct {
-	ID          string `json:"id,omitempty"`
-	URL         string `json:"url,omitempty"`
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name,omitempty"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
-}
-
 // GetIdentity fetches the identity with the given ID
 func (c *RESTClient) Identity(id string) (*Identity, error) {
-=======
-// Identity fetches the identity with the given ID
-func (c *Client) Identity(id string) (*Identity, error) {
->>>>>>> master
 	return nil, nil
 }
 

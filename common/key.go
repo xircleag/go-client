@@ -6,8 +6,8 @@ import (
 )
 
 type Key struct {
-	ID      string   `json:"key_id"`
-	KeyPair *KeyPair `json:"key_pair"`
+	ID      string   `json:"id"`
+	*KeyPair
 }
 
 type KeyPair struct {
@@ -16,12 +16,12 @@ type KeyPair struct {
 }
 
 type Certificate struct {
-	*Key
+	*Key	`json:"key"`
 	Email      string `json:"email"`
 	Password   string `json:"password"`
 	AccountID  string `json:"account_id"`
 	ProviderID string `json:"provider_id"`
-	AppID      string `json:"app_id"`
+	AppID      string `json:"application_id"`
 }
 
 func ValidateKey(key *Key) error {
