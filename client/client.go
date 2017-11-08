@@ -22,12 +22,16 @@ type NonceRequest struct {
 	Nonce string `json:"nonce"`
 }
 
-// NewClient creates a new Layer Client API client
+// NewClient creates a new Layer Client API Client
 func NewClient(ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
 	u, err := url.Parse("https://api.layer.com")
 	if err != nil {
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
+	return NewTestClient(u, ctx, appID, options...)
+}
+
+func NewTestClient(u *url.URL, ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
 
 	wu, err := url.Parse("wss://websockets.layer.com")
 	if err != nil {

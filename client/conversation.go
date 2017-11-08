@@ -42,14 +42,14 @@ type Conversation struct {
 	Distinct bool `json:"distinct"`
 
 	// The number of unread messages on the conversation for the user specified
-	// by the client.
+	// by the Client.
 	UnreadMessageCount json.Number `json:"unread_message_count,omitempty"`
 
 	// A generic interface available to store arbitrary metadata.
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 
-	// Internal reference to the client object.
-	client *Client `json:"-"`
+	// Internal reference to the Client object.
+	Client *Client `json:"-"`
 }
 
 func (c *Client) buildConversationURL(id string) (*url.URL, error) {
@@ -110,11 +110,11 @@ func (it *ConversationIterator) Next() (*Conversation, error) {
 		// No more
 		return nil, iterator.Done
 	}
-	it.conversations[it.current-1].client = it.client
+	it.conversations[it.current-1].Client = it.client
 	return it.conversations[it.current-1], nil
 }
 
-// Conversations gets all conversations for the user specified by the client connection, with a starting ID used for paging and iterations
+// Conversations gets all conversations for the user specified by the Client connection, with a starting ID used for paging and iterations
 func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string) ([]*Conversation, error) {
 	// Create the request URL
 	u, err := c.buildConversationURL("")
@@ -170,7 +170,7 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string
 	return conversations, nil
 }
 
-// Conversations gets all conversations for the user specified by the client connection
+// Conversations gets all conversations for the user specified by the Client connection
 func (c *Client) Conversations(ctx context.Context, sort string) (*ConversationIterator, error) {
 	conversations, err := c.ConversationsFrom(ctx, sort, "")
 	if err != nil {
@@ -190,7 +190,7 @@ func (c *Client) Conversations(ctx context.Context, sort string) (*ConversationI
 	}, nil
 }
 
-// Conversation gets a single conversation for the user specified by the client connection
+// Conversation gets a single conversation for the user specified by the Client connection
 func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, error) {
 	u, err := c.buildConversationURL(id)
 	if err != nil {
@@ -229,11 +229,11 @@ func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, er
 	if err := json.Unmarshal(body, &conversation); err != nil {
 		return nil, fmt.Errorf("Error parsing conversation JSON: %v", err)
 	}
-	conversation.client = c
+	conversation.Client = c
 	return conversation, nil
 }
 
-// CreateConversation creates a conversation for the user specified by the client connection
+// CreateConversation creates a conversation for the user specified by the Client connection
 func (c *Client) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
@@ -288,7 +288,7 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	if err := json.Unmarshal(body, &conversation); err != nil {
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
-	conversation.client = c
+	conversation.Client = c
 	return conversation, nil
 }
 
@@ -298,7 +298,7 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 // should leave the conversation, and is only applicable for a mode of "my_devices".
 func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool) error {
 	// Create the request URL
-	u, err := convo.client.buildConversationURL(convo.ID)
+	u, err := convo.Client.buildConversationURL(convo.ID)
 	if err != nil {
 		return fmt.Errorf("Error building conversation URL: %v", err)
 	}
@@ -321,7 +321,7 @@ func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool)
 	req.URL.RawQuery = q.Encode()
 
 	// Send the request
-	res, err := convo.client.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("Error deleting conversation: %v", err)
 	}

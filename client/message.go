@@ -31,7 +31,7 @@ type Message struct {
 	// The URL for the message receipt status.
 	ReceiptsURL string `json:"receipts_url,omitempty"`
 
-	// Per-client ordering of the message in the conversation.
+	// Per-Client ordering of the message in the conversation.
 	Position json.Number `json:"-"`
 
 	// Conversation that the message is part of.
@@ -120,7 +120,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation message URL: %v", err)
 	}
-	u = convo.client.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	query, err := json.Marshal(mc)
@@ -134,7 +134,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := convo.client.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Error sending request: %v", err)
 	}
@@ -213,7 +213,7 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Me
 	if err != nil {
 		return nil, fmt.Errorf("Error building conversation message URL: %v", err)
 	}
-	u = convo.client.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest("GET", u.String(), nil)
@@ -229,7 +229,7 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Me
 	req.URL.RawQuery = q.Encode()
 
 	// Send the request
-	res, err := convo.client.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Error sending request: %v", err)
 	}

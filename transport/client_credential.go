@@ -46,7 +46,8 @@ func (t clientCredentialTransport) RoundTrip(req *http.Request) (*http.Response,
 	}
 
 	// Build the new request
-	newReq := *req
+	reqVal := *req
+	newReq := &reqVal
 	newReq.WithContext(t.ctx)
 	newReq.Header = t.headers
 	for k, v := range req.Header {
@@ -60,7 +61,7 @@ func (t clientCredentialTransport) RoundTrip(req *http.Request) (*http.Response,
 	// XXX
 	//fmt.Println(fmt.Sprintf("newReq: %+v", newReq))
 
-	return rt.RoundTrip(&newReq)
+	return rt.RoundTrip(newReq)
 }
 
 func (t clientCredentialTransport) getNonce() (string, error) {
