@@ -28,15 +28,16 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 	if err != nil {
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
-	return NewTestClient(u, ctx, appID, options...)
-}
-
-func NewTestClient(u *url.URL, ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
 
 	wu, err := url.Parse("wss://websockets.layer.com")
 	if err != nil {
 		return nil, fmt.Errorf("Error building websocket URL: %v", err)
 	}
+
+	return NewTestClient(u, wu, ctx, appID, options...)
+}
+
+func NewTestClient(u *url.URL, wu *url.URL, ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
 
 	headers := map[string][]string{
 		"Accept":       {"application/vnd.layer+json; version=2.0"},
