@@ -46,16 +46,25 @@ func (t clientCredentialTransport) RoundTrip(req *http.Request) (*http.Response,
 	}
 
 	// Build the new request
-	reqVal := *req
-	newReq := &reqVal
+	newReq := req
 	newReq.WithContext(t.ctx)
-	newReq.Header = t.headers
-	for k, v := range req.Header {
-		newReq.Header[k] = v
+	for k, v := range t.headers {
+		newReq.Header.Del(k)
+		for _, val := range v {
+			newReq.Header.Add(k, val)
+		}
 	}
-	newReq.Header["User-Agent"] = []string{t.userAgent}
+	for k, v := range req.Header {
+		newReq.Header.Del(k)
+		for _, val := range v {
+			newReq.Header.Add(k, val)
+		}
+	}
+	newReq.Header.Del("User-Agent")
+	newReq.Header.Add("User-Agent", t.userAgent)
 	if t.token != "" {
-		newReq.Header["Authorization"] = []string{fmt.Sprintf("Layer session-token=\"%s\"", t.token)}
+		newReq.Header.Del("Authorization")
+		newReq.Header.Add("Authorization", fmt.Sprintf("Layer session-token=\"%s\"", t.token))
 	}
 
 	// XXX
