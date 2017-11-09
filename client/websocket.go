@@ -204,7 +204,7 @@ func (w *Websocket) connect() error {
 		return err
 	}
 
-	u := fmt.Sprintf("%s?session_token=%s", w.client.baseURL.String(), token)
+	u := fmt.Sprintf("%s?session_token=%s", w.client.websocketURL.String(), token)
 	ws, _, err := w.dialer.Dial(u, wsHeaders)
 	if err != nil {
 		log.Println("error dialing " + err.Error())
