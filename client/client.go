@@ -7,7 +7,10 @@ import (
 	"github.com/layerhq/go-client/option"
 	"github.com/layerhq/go-client/transport"
 
+	"errors"
+	"github.com/satori/go.uuid"
 	"golang.org/x/net/context"
+	"time"
 )
 
 type Client struct {
@@ -21,6 +24,8 @@ type Client struct {
 type NonceRequest struct {
 	Nonce string `json:"nonce"`
 }
+
+var ErrTimedOut = errors.New("Operation timed out.")
 
 // NewClient creates a new Layer Client API Client
 func NewClient(ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
@@ -70,4 +75,19 @@ func (c *Client) BaseURL() *url.URL {
 // Return the websocket URL
 func (c *Client) WebsocketURL() *url.URL {
 	return c.websocketURL
+}
+
+func newRequestID() string {
+	return uuid.NewV1().String()
+}
+
+func getTimer(ctx context.Context) (timer *time.Timer) {
+	deadline, present := ctx.Deadline()
+	if present {
+		timer = time.NewTimer(deadline.Sub(time.Now()))
+	} else {
+		// default timeout of 30 seconds
+		timer = time.NewTimer(time.Duration(30) * time.Second)
+	}
+	return
 }

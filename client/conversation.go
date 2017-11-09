@@ -233,8 +233,57 @@ func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, er
 	return conversation, nil
 }
 
-// CreateConversation creates a conversation for the user specified by the Client connection
+// CreateConversation creates a conversation for the user specified by the client connection and returns the request id the user can look for on their receive channel
 func (c *Client) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
+	// Create the request object
+	cc := &conversationCreate{
+		Participants: participants,
+		Distinct:     distinct,
+		Metadata:     metadata,
+	}
+
+	reqID := newRequestID()
+
+	packet := &WebsocketPacket{
+		Type: "request",
+		Body: WebsocketRequest{
+			Method:    WebsocketChangeConversationCreate,
+			RequestID: reqID,
+			Data:      cc,
+		},
+	}
+
+	result := make(chan *Conversation)
+
+	// register a handler for the response
+	unsub := c.Websocket.HandleFunc(WebsocketChangeConversationCreate, func(w *Websocket, p *WebsocketPacket) {
+		resp, ok := p.Body.(*WebsocketResponse)
+		if !ok || resp.RequestID != reqID {
+			return
+		}
+
+		conversation, _ := resp.Data.(*Conversation)
+		result <- conversation
+	})
+	defer unsub.Remove()
+
+	timer := getTimer(ctx)
+
+	if err := c.Websocket.Send(ctx, packet); err != nil {
+		return nil, err
+	}
+
+	var conversation *Conversation
+	select {
+	case conversation = <-result:
+		return conversation, nil
+	case <-timer.C:
+		return nil, ErrTimedOut
+	}
+}
+
+// CreateConversation creates a conversation for the user specified by the Client connection
+func (c *Client) CreateConversationREST(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
 		Participants: participants,

@@ -114,6 +114,60 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 		Notification: notification,
 	}
 
+	reqID := newRequestID()
+
+	packet := &WebsocketPacket{
+		Type: "request",
+		Body: WebsocketRequest{
+			Method:    WebsocketChangeMessageCreate,
+			RequestID: reqID,
+			ObjectID:  convo.ID,
+			Data:      mc,
+		},
+	}
+
+	result := make(chan *Message)
+
+	// register a handler for the response
+	unsub := convo.Client.Websocket.HandleFunc(WebsocketChangeMessageCreate, func(w *Websocket, p *WebsocketPacket) {
+		resp, ok := p.Body.(*WebsocketResponse)
+		if !ok || resp.RequestID != reqID {
+			return
+		}
+
+		message, _ := resp.Data.(*Message)
+		result <- message
+	})
+	defer unsub.Remove()
+
+	timer := getTimer(ctx)
+
+	if err := convo.Client.Websocket.Send(ctx, packet); err != nil {
+		return nil, err
+	}
+
+	var message *Message
+	select {
+	case message = <-result:
+		return message, nil
+	case <-timer.C:
+		return nil, ErrTimedOut
+	}
+}
+
+// SendTextMessage is a helper function to send a single-part plaintext message
+func (convo *Conversation) SendTextMessageREST(ctx context.Context, message string, notification *MessageNotification) (*Message, error) {
+	msg := plaintextMessage(message)
+	return convo.SendMessageREST(ctx, msg.Parts, notification)
+}
+
+// SendMessage sends a message on the current conversation
+func (convo *Conversation) SendMessageREST(ctx context.Context, parts []*MessagePart, notification *MessageNotification) (*Message, error) {
+	mc := &messageCreate{
+		Parts:        parts,
+		Notification: notification,
+	}
+
 	// Build the URL
 	convoID := common.UUIDFromLayerURL(convo.ID)
 	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convoID))
