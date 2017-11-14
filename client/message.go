@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/iterator"
-
-	"golang.org/x/net/context"
 )
 
 const (
@@ -139,6 +138,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 		result <- message
 	})
 	defer unsub.Remove()
+	go convo.Client.Websocket.Listen(ctx)
 
 	timer := getTimer(ctx)
 

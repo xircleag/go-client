@@ -42,6 +42,7 @@ type Websocket struct {
 	conn     *websocket.Conn
 	handlers *websocketEventHandlerSet
 	sync.RWMutex
+	listening bool
 }
 
 type WebsocketPacket struct {
@@ -244,6 +245,9 @@ func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
 
 // Start listening for wbesocket events
 func (w *Websocket) Listen(ctx context.Context) error {
+	if w.listening {
+		return nil
+	}
 	return w.Receive(ctx, func(ctx context.Context, p *WebsocketPacket) {
 		// Dispatch
 		if w.handlers != nil {

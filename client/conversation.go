@@ -2,17 +2,17 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/layerhq/go-client/iterator"
-
-	"golang.org/x/net/context"
 )
 
 type Conversation struct {
@@ -137,7 +137,7 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string
 	}
 	q.Add("page_size", "100")
 	req.URL.RawQuery = q.Encode()
-	fmt.Println(fmt.Sprintf("%+v", req))
+	//fmt.Println(fmt.Sprintf("%+v", req))
 
 	// Send the request
 	res, err := c.transport.Do(req)
@@ -266,9 +266,11 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 		result <- conversation
 	})
 	defer unsub.Remove()
+	go c.Websocket.Listen(ctx)
 
 	timer := getTimer(ctx)
 
+	log.Println("")
 	if err := c.Websocket.Send(ctx, packet); err != nil {
 		return nil, err
 	}
