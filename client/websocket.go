@@ -4,16 +4,15 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/websocket"
 	"golang.org/x/net/context"
+	"github.com/buger/jsonparser"
 )
 
 const (
@@ -29,7 +28,7 @@ const (
 	WebsocketChangeConversationDelete          = "Conversation.delete"
 	WebsocketChangeConversationParticipants    = "Conversation.participants"
 	WebsocketChangeConversationMetadata        = "Conversation.metadata"
-	WebsocketChangeConversationMarkAllRead     = "Conversation.mark_all_read"
+	WebsocketChangeConversationMarkAllRead	   = "Conversation.mark_all_read"
 	WebsocketChangeConversationRecipientStatus = "Conversation.recipient_status"
 	WebsocketChangeConversationLastMessage     = "Conversation.last_message"
 	WebsocketChangeMessageCreate               = "Message.create"
@@ -42,7 +41,7 @@ type Websocket struct {
 	conn     *websocket.Conn
 	handlers *websocketEventHandlerSet
 	sync.RWMutex
-	listening bool
+	isListening bool
 }
 
 type WebsocketPacket struct {
@@ -227,27 +226,22 @@ func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
 		return err
 	}
 
-	w.RLock()
-	wr, err := w.conn.NextWriter(websocket.TextMessage)
-	if err != nil {
-		return err
-	}
-	w.RUnlock()
+	// I don't know why this is necessary
+	time.Sleep(1)
 
-	data, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	wr.Write(data)
+	w.Lock()
+	err := w.conn.WriteJSON(p)
+	w.Unlock()
 
-	return wr.Close()
+	return err
 }
 
-// Start listening for wbesocket events
+// Start listening for websocket events
 func (w *Websocket) Listen(ctx context.Context) error {
-	if w.listening {
+	if w.isListening {
 		return nil
 	}
+	w.isListening = true
 	return w.Receive(ctx, func(ctx context.Context, p *WebsocketPacket) {
 		// Dispatch
 		if w.handlers != nil {
@@ -273,6 +267,7 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 
 	for {
 		// Create a response reader
+		/*
 		_, r, err := w.conn.NextReader()
 		if err != nil {
 			return err
@@ -289,6 +284,14 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 		if err := json.Unmarshal(res, &p); err != nil {
 			return err
 		}
+		*/
+		var body json.RawMessage
+		p := &WebsocketPacket{Body: &body}
+		if err := w.conn.ReadJSON(p); err != nil {
+			log.Println("ERROR: " + err.Error())
+			continue
+		}
+		log.Printf("packet: %v", p)
 
 		switch strings.ToLower(p.Type) {
 		case "response":
@@ -299,17 +302,18 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 			}
 			p.Body = r
 
-			id, err := jsonparser.GetString(*r.Data.(*json.RawMessage), "id")
+			rawMsg := *r.Data.(*json.RawMessage)
+			id, err := jsonparser.GetString(rawMsg, "id")
 			objectType := strings.ToLower(id[9:])
 			switch {
 			case strings.HasPrefix(objectType, "conversations"):
 				var conversation *Conversation
-				if err = json.Unmarshal(*r.Data.(*json.RawMessage), &conversation); err == nil {
+				if err = json.Unmarshal(rawMsg, &conversation); err == nil {
 					r.Data = conversation
 				}
 			case strings.HasPrefix(objectType, "messages"):
 				var message *Message
-				if err = json.Unmarshal(*r.Data.(*json.RawMessage), &message); err == nil {
+				if err = json.Unmarshal(rawMsg, &message); err == nil {
 					r.Data = message
 				}
 			}

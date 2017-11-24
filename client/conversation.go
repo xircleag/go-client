@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
+	//"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -254,23 +254,30 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	}
 
 	result := make(chan *Conversation)
+	errs := make(chan error, 2)
 
-	// register a handler for the response
 	unsub := c.Websocket.HandleFunc(WebsocketChangeConversationCreate, func(w *Websocket, p *WebsocketPacket) {
 		resp, ok := p.Body.(*WebsocketResponse)
 		if !ok || resp.RequestID != reqID {
 			return
 		}
 
-		conversation, _ := resp.Data.(*Conversation)
+		conversation, ok := resp.Data.(*Conversation)
+		if !ok {
+			errs <- errors.New("Cannot convert response to Conversation.")
+			return
+		}
 		result <- conversation
 	})
 	defer unsub.Remove()
-	go c.Websocket.Listen(ctx)
+	go func() {
+		if err := c.Websocket.Listen(ctx); err != nil {
+			errs <- err
+		}
+	}()
 
 	timer := getTimer(ctx)
 
-	log.Println("")
 	if err := c.Websocket.Send(ctx, packet); err != nil {
 		return nil, err
 	}
@@ -279,6 +286,8 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	select {
 	case conversation = <-result:
 		return conversation, nil
+	case err := <-errs:
+		return nil, err
 	case <-timer.C:
 		return nil, ErrTimedOut
 	}
