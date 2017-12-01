@@ -4,15 +4,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/gorilla/websocket"
 	"golang.org/x/net/context"
-	"github.com/buger/jsonparser"
 )
 
 const (
@@ -28,7 +27,7 @@ const (
 	WebsocketChangeConversationDelete          = "Conversation.delete"
 	WebsocketChangeConversationParticipants    = "Conversation.participants"
 	WebsocketChangeConversationMetadata        = "Conversation.metadata"
-	WebsocketChangeConversationMarkAllRead	   = "Conversation.mark_all_read"
+	WebsocketChangeConversationMarkAllRead     = "Conversation.mark_all_read"
 	WebsocketChangeConversationRecipientStatus = "Conversation.recipient_status"
 	WebsocketChangeConversationLastMessage     = "Conversation.last_message"
 	WebsocketChangeMessageCreate               = "Message.create"
@@ -207,7 +206,6 @@ func (w *Websocket) connect() error {
 	u := fmt.Sprintf("%s?session_token=%s", w.client.websocketURL.String(), token)
 	ws, _, err := w.dialer.Dial(u, wsHeaders)
 	if err != nil {
-		log.Println("error dialing " + err.Error())
 		return err
 	}
 	w.conn = ws
@@ -268,30 +266,28 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 	for {
 		// Create a response reader
 		/*
-		_, r, err := w.conn.NextReader()
-		if err != nil {
-			return err
-		}
+			_, r, err := w.conn.NextReader()
+			if err != nil {
+				return err
+			}
 
-		res, err := ioutil.ReadAll(r)
-		if err != nil {
-			return err
-		}
+			res, err := ioutil.ReadAll(r)
+			if err != nil {
+				return err
+			}
 
-		// Decode the response
-		var body json.RawMessage
-		p := &WebsocketPacket{Body: &body}
-		if err := json.Unmarshal(res, &p); err != nil {
-			return err
-		}
+			// Decode the response
+			var body json.RawMessage
+			p := &WebsocketPacket{Body: &body}
+			if err := json.Unmarshal(res, &p); err != nil {
+				return err
+			}
 		*/
 		var body json.RawMessage
 		p := &WebsocketPacket{Body: &body}
 		if err := w.conn.ReadJSON(p); err != nil {
-			log.Println("ERROR: " + err.Error())
 			continue
 		}
-		log.Printf("packet: %v", p)
 
 		switch strings.ToLower(p.Type) {
 		case "response":
