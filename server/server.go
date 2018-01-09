@@ -8,7 +8,21 @@ import (
 	"github.com/layerhq/go-client/transport"
 
 	"golang.org/x/net/context"
+	"strings"
 )
+
+const (
+	IdentityType = "identities"
+	ConversationType = "conversations"
+)
+
+func LayerID(typeName, id string) string {
+	prefix := "layer:///" + typeName + "/"
+	if strings.HasPrefix(id, prefix) {
+		return id
+	}
+	return prefix + id
+}
 
 type Server struct {
 	baseURL   *url.URL
@@ -29,8 +43,13 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
 
+	return NewTestClient(ctx, u, appID, options...)
+}
+
+// NewTestClient
+func NewTestClient(ctx context.Context, u *url.URL, appID string, options ...option.ClientOption) (*Server, error) {
 	headers := map[string][]string{
-		"Accept":       {"application/vnd.layer+json; version=2.0"},
+		"Accept":       {"application/vnd.layer+json; version=3.0"},
 		"Content-Type": {"application/json"},
 	}
 

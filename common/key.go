@@ -22,6 +22,7 @@ type Certificate struct {
 	AccountID  string `json:"account_id"`
 	ProviderID string `json:"provider_id"`
 	AppID      string `json:"app_id"`
+	APIKey	   string `json:"api_key"`
 }
 
 func ValidateKey(key *Key) error {

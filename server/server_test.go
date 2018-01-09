@@ -1,16 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
+	//"fmt"
 	"io/ioutil"
-	"os"
+	"net/url"
+	//"os"
 	"testing"
 
 	//"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/option"
-
-	"golang.org/x/net/context"
+	"github.com/layerhq/go-client/common"
 )
 
 type TestingCredentials struct {
@@ -29,16 +30,19 @@ type TestingCredentialsKey struct {
 
 func createTestClient() (*Server, error) {
 	// Load credentials
+	/*
 	path := os.Getenv("TESTING_CREDENTIALS")
 	if path == "" {
 		return nil, fmt.Errorf("TESTING_CREDENTIALS path is not set")
 	}
+	*/
+	path := "/Users/adam/workspace/test/staging1-creds.json"
 
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var c *TestingCredentials
+	var c *common.Certificate
 	err = json.Unmarshal(data, &c)
 	if err != nil {
 		return nil, err
@@ -46,7 +50,8 @@ func createTestClient() (*Server, error) {
 
 	ctx := context.Background()
 
-	return NewClient(ctx, c.ApplicationID, option.WithBearerToken(c.APIKey))
+	u, _ := url.Parse("https://staging-api.layer.com/apps/" + c.AppID + "/")
+	return NewTestClient(ctx, u, c.AppID, option.WithBearerToken(c.APIKey))
 }
 
 func TestCreateClientWithBearerToken(t *testing.T) {

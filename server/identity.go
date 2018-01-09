@@ -36,6 +36,14 @@ type BasicIdentity struct {
 	AvatarURL   string `json:avatar_url,omitempty`
 }
 
+func (bi *BasicIdentity) LayerID() string {
+	prefix := "layer:///identities/"
+	if strings.HasPrefix(bi.ID, prefix) {
+		return bi.ID
+	}
+	return prefix + bi.ID
+}
+
 func (s *Server) buildIdentityURL(id string) (*url.URL, error) {
 	var err error
 	var u *url.URL
