@@ -293,18 +293,9 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Me
 		return nil, fmt.Errorf("Status code is %d", res.StatusCode)
 	}
 
-	// Parse the body
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Error parsing response: %v", err)
-	}
-
 	var messages []*Message
-	if err := json.Unmarshal(body, &messages); err != nil {
-		return nil, fmt.Errorf("Error parsing JSON: %v", err)
-	}
-
-	return messages, nil
+	err = json.NewDecoder(res.Body).Decode(messages)
+	return messages, err
 }
 
 // Messages gets all messages on a conversation

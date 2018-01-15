@@ -237,6 +237,10 @@ func (c *Conversation) UpdateMetadata(ctx context.Context, edits []ConversationE
 }
 
 func (c *Conversation) MarkRead(ctx context.Context, userID string, msgIndex *uint32) (uint32, error) {
+	if c.apiClient == nil {
+		return 0, errors.New("apiClient not set in conversation")
+	}
+
 	u, err := url.Parse(strings.TrimSuffix("users/" + userID + "/conversations/" + c.ID(), "/"))
 	if err != nil {
 		return 0, err
