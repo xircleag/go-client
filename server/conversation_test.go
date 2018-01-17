@@ -15,14 +15,7 @@ func createConversation(c *Server) (*Conversation, error) {
 	other.Set("one", "1")
 	other.Set("two", "2")
 	metadata.Set("other", other)
-	return c.CreateConversation(context.Background(), Conversation{
-		Participants: []BasicIdentity{
-			{ID: "test"},
-			{ID: "test1"},
-		},
-		Distinct: false,
-		Metadata: metadata,
-	})
+	return c.CreateConversation(context.Background(), []string{"test", "test1"}, false, metadata)
 }
 
 func TestCreateConversation(t *testing.T) {

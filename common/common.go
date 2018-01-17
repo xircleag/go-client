@@ -20,6 +20,19 @@ func ValidateUUID(id string) error {
 	return nil
 }
 
+const (
+	IdentitiesName = "identities"
+	ConversationsName = "conversations"
+)
+
+func LayerID(typeName, id string) string {
+	prefix := "layer:///" + typeName + "/"
+	if strings.HasPrefix(id, prefix) {
+		return id
+	}
+	return prefix + id
+}
+
 func UUIDFromLayerURL(url string) string {
 	if strings.HasPrefix(url, "layer") {
 		parts := strings.Split(url, "/")

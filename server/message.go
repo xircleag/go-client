@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"errors"
 	"github.com/layerhq/go-client/iterator"
 	"strconv"
-	"google.golang.org/genproto/googleapis/storagetransfer/v1"
 )
 
 type Message struct {
@@ -119,7 +117,7 @@ func plaintextMessage(content string) *Message {
 // SendMessage sends a message to the server.  Note that if a schedule, is included then the returned Message
 // pointer will be nil since the message will be created in the future.
 func (convo *Conversation) SendMessage(ctx context.Context, mc *MessageCreate) (*Message, error) {
-	if convo.apiClient == nil {
+	if convo.Client == nil {
 		return nil, errors.New("apiClient not set in conversation")
 	}
 
@@ -128,7 +126,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, mc *MessageCreate) (
 	if err != nil {
 		return nil, fmt.Errorf("error building conversation message URL: %v", err)
 	}
-	u = convo.apiClient.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	query, err := json.Marshal(mc)
@@ -142,7 +140,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, mc *MessageCreate) (
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := convo.apiClient.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %v", err)
 	}
@@ -171,7 +169,7 @@ func (convo *Conversation) SendTextMessage(ctx context.Context, senderID string,
 // SendMessage sends a message to the server.  Note that if a schedule, is included then the returned Message
 // pointer will be nil since the message will be created in the future.
 func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCreate) error {
-	if convo.apiClient == nil {
+	if convo.Client == nil {
 		return errors.New("apiClient not set in conversation")
 	}
 	if len(mc) > 12 {
@@ -179,7 +177,7 @@ func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCre
 	}
 
 	for i := range mc {
-		mc[i].SenderID = LayerID(IdentityType, mc[i].SenderID)
+		mc[i].SenderID = common.LayerID(common.IdentitiesName, mc[i].SenderID)
 	}
 
 	// Build the URL
@@ -187,7 +185,7 @@ func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCre
 	if err != nil {
 		return fmt.Errorf("error building conversation message URL: %v", err)
 	}
-	u = convo.apiClient.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	query, err := json.Marshal(mc)
@@ -201,7 +199,7 @@ func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCre
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := convo.apiClient.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("error sending request: %v", err)
 	}
@@ -250,12 +248,12 @@ func (it *MessageIterator) Next() (*Message, error) {
 // MessagesFrom gets all messages on a conversation from the specified offset
 func (convo *Conversation) MessagesFrom(ctx context.Context, from string, pageSize int) ([]*Message, error) {
 	// Create the request URL
-	convoID := common.UUIDFromLayerURL(convo.ID)
+	convoID := common.UUIDFromLayerURL(convo.ID())
 	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convoID))
 	if err != nil {
 		return nil, fmt.Errorf("error building conversation message URL: %v", err)
 	}
-	u = convo.apiClient.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest("GET", u.String(), nil)
@@ -276,7 +274,7 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string, pageSi
 	req.URL.RawQuery = q.Encode()
 
 	// Send the request
-	res, err := convo.apiClient.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %v", err)
 	}
@@ -315,7 +313,7 @@ func (convo *Conversation) DeleteMessage(ctx context.Context, msgID string) (err
 	if err != nil {
 		return fmt.Errorf("error building conversation message URL: %v", err)
 	}
-	u = convo.apiClient.baseURL.ResolveReference(u)
+	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
@@ -325,7 +323,7 @@ func (convo *Conversation) DeleteMessage(ctx context.Context, msgID string) (err
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := convo.apiClient.transport.Do(req)
+	res, err := convo.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("error sending request: %v", err)
 	}
@@ -367,7 +365,7 @@ func (s *Server) SendAnnouncement(ctx context.Context, ac *AnnouncementCreate) (
 	u = s.baseURL.ResolveReference(u)
 
 	for i := range ac.Recipients {
-		ac.Recipients[i] = LayerID(IdentityType, ac.Recipients[i])
+		ac.Recipients[i] = common.LayerID(common.IdentitiesName, ac.Recipients[i])
 	}
 
 	// Create the request
@@ -405,7 +403,7 @@ func (s *Server) SendTextAnnouncement(ctx context.Context, senderID string, reci
 
 func (s *Server) SendNotification(ctx context.Context, notification *NotificationCreate) error {
 	for i := range notification.Recipients {
-		notification.Recipients[i] = LayerID(IdentityType, notification.Recipients[i])
+		notification.Recipients[i] = common.LayerID(common.IdentitiesName, notification.Recipients[i])
 	}
 
 	// Build the URL

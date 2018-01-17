@@ -1,28 +1,13 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
 	"github.com/layerhq/go-client/option"
 	"github.com/layerhq/go-client/transport"
-
-	"golang.org/x/net/context"
-	"strings"
 )
-
-const (
-	IdentityType = "identities"
-	ConversationType = "conversations"
-)
-
-func LayerID(typeName, id string) string {
-	prefix := "layer:///" + typeName + "/"
-	if strings.HasPrefix(id, prefix) {
-		return id
-	}
-	return prefix + id
-}
 
 type Server struct {
 	baseURL   *url.URL

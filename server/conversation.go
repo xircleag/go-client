@@ -22,23 +22,17 @@ type Conversation struct {
 	Metadata common.Metadata `json:"metadata"`
 
 	// this feels so wrong
-	apiClient *Server
+	Client *Server
 }
 
 const ConversationIDPrefix = "layer:///conversations/"
 
 func (c *Conversation) ID() string {
-	if strings.HasPrefix(c.Id, ConversationIDPrefix) {
-		return c.Id[len(ConversationIDPrefix):]
-	}
-	return c.Id
+	return common.UUIDFromLayerURL(c.Id)
 }
 
 func (c *Conversation) LayerID() string {
-	if strings.HasPrefix(c.Id, ConversationIDPrefix) {
-		return c.Id
-	}
-	return ConversationIDPrefix + c.Id
+	return common.LayerID(common.ConversationsName, c.Id)
 }
 
 func (s *Server) buildConversationURL(id string) (u *url.URL, err error) {
@@ -50,21 +44,20 @@ func (s *Server) buildConversationURL(id string) (u *url.URL, err error) {
 	return
 }
 
-func (s *Server) CreateConversation(ctx context.Context, convo Conversation) (*Conversation, error) {
+func (s *Server) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata common.Metadata) (*Conversation, error) {
 	// Create the request URL
-	u, err := s.buildConversationURL(convo.ID())
+	u, err := s.buildConversationURL("")
 	if err != nil {
 		return nil, fmt.Errorf("error building conversation URL: %v", err)
 	}
 
-	participants := []string{}
-	for p := range convo.Participants {
-		participants = append(participants, convo.Participants[p].LayerID())
+	for p := range participants {
+		participants[p] = common.LayerID(common.ConversationsName, participants[p])
 	}
 	reqBody := map[string]interface{}{
 		"participants": participants,
-		"distinct": convo.Distinct,
-		"metadata": convo.Metadata,
+		"distinct": distinct,
+		"metadata": metadata,
 	}
 
 	obj, err := json.Marshal(reqBody)
@@ -85,8 +78,9 @@ func (s *Server) CreateConversation(ctx context.Context, convo Conversation) (*C
 		return nil, fmt.Errorf("status code is %d", res.StatusCode)
 	}
 
-	c := &Conversation{apiClient: s}
+	c := &Conversation{}
 	err = json.NewDecoder(res.Body).Decode(&c)
+	c.Client = s
 	return c, err
 }
 
@@ -114,17 +108,18 @@ func (s *Server) Conversation(ctx context.Context, id string) (*Conversation, er
 		return nil, fmt.Errorf("status code is %d", res.StatusCode)
 	}
 
-	c := &Conversation{apiClient: s}
+	c := &Conversation{}
 	err = json.NewDecoder(res.Body).Decode(&c)
+	c.Client = s
 	return c, err
 }
 
 func (c *Conversation) Delete(ctx context.Context) error {
-	if c.apiClient == nil {
+	if c.Client == nil {
 		return errors.New("apiClient not set in conversation")
 	}
 	// Create the request URL
-	u, err := c.apiClient.buildConversationURL(c.ID())
+	u, err := c.Client.buildConversationURL(c.ID())
 	if err != nil {
 		return fmt.Errorf("error building conversation URL: %v", err)
 	}
@@ -136,7 +131,7 @@ func (c *Conversation) Delete(ctx context.Context) error {
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := c.apiClient.transport.Do(req)
+	res, err := c.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("error deleting conversation: %v", err)
 	}
@@ -176,11 +171,11 @@ type ConversationEdit struct {
 }
 
 func (c *Conversation) UpdateParticipants(ctx context.Context, edits []ConversationEdit) error {
-	if c.apiClient == nil {
+	if c.Client == nil {
 		return errors.New("apiClient not set in conversation")
 	}
 	// Create the request URL
-	u, err := c.apiClient.buildConversationURL(c.ID())
+	u, err := c.Client.buildConversationURL(c.ID())
 	if err != nil {
 		return fmt.Errorf("error building conversation URL: %v", err)
 	}
@@ -193,7 +188,7 @@ func (c *Conversation) UpdateParticipants(ctx context.Context, edits []Conversat
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := c.apiClient.transport.Do(req)
+	res, err := c.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("error creating conversation: %v", err)
 	}
@@ -206,12 +201,12 @@ func (c *Conversation) UpdateParticipants(ctx context.Context, edits []Conversat
 }
 
 func (c *Conversation) UpdateMetadata(ctx context.Context, edits []ConversationEdit) error {
-	if c.apiClient == nil {
+	if c.Client == nil {
 		return errors.New("apiClient not set in conversation")
 	}
 
 	// Create the request URL
-	u, err := c.apiClient.buildConversationURL(c.ID())
+	u, err := c.Client.buildConversationURL(c.ID())
 	if err != nil {
 		return fmt.Errorf("error building conversation URL: %v", err)
 	}
@@ -224,7 +219,7 @@ func (c *Conversation) UpdateMetadata(ctx context.Context, edits []ConversationE
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := c.apiClient.transport.Do(req)
+	res, err := c.Client.transport.Do(req)
 	if err != nil {
 		return fmt.Errorf("error creating conversation: %v", err)
 	}
@@ -237,7 +232,7 @@ func (c *Conversation) UpdateMetadata(ctx context.Context, edits []ConversationE
 }
 
 func (c *Conversation) MarkRead(ctx context.Context, userID string, msgIndex *uint32) (uint32, error) {
-	if c.apiClient == nil {
+	if c.Client == nil {
 		return 0, errors.New("apiClient not set in conversation")
 	}
 
@@ -245,7 +240,7 @@ func (c *Conversation) MarkRead(ctx context.Context, userID string, msgIndex *ui
 	if err != nil {
 		return 0, err
 	}
-	u = c.apiClient.baseURL.ResolveReference(u)
+	u = c.Client.baseURL.ResolveReference(u)
 
 	reqBody := []byte{}
 	if msgIndex != nil {
@@ -259,7 +254,7 @@ func (c *Conversation) MarkRead(ctx context.Context, userID string, msgIndex *ui
 	req = req.WithContext(ctx)
 
 	// Send the request
-	res, err := c.apiClient.transport.Do(req)
+	res, err := c.Client.transport.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("error deleting conversation: %v", err)
 	}
