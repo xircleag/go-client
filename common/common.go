@@ -53,12 +53,14 @@ func (m *Metadata) Set(key string, value interface{}) error {
 		m.data = make(map[string]interface{})
 	}
 
-	_, isString := value.(string)
-	_, isMetadata := value.(Metadata)
-	if !isString && !isMetadata {
+	switch value.(type) {
+	case string:
+		m.data[key] = value
+	case Metadata:
+		m.data[key] = value
+	default:
 		return errors.New("value must be string or Metadata")
 	}
-	m.data[key] = value
 	return nil
 }
 
@@ -68,6 +70,21 @@ func (m *Metadata) Get(key string) interface{} {
 		return nil
 	}
 	return m.data[key]
+}
+
+func (m Metadata) ToMap() map[string]string {
+	strMap := make(map[string]string)
+	if m.data == nil {
+		return strMap
+	}
+
+	for key, value := range m.data {
+		switch value.(type) {
+		case string:
+			strMap[key] = value.(string)
+		}
+	}
+	return strMap
 }
 
 func (m Metadata) MarshalJSON() ([]byte, error) {
