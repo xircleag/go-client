@@ -41,6 +41,7 @@ func (t *HTTPTransport) Do(req *http.Request) (*http.Response, error) {
 }
 
 type HTTPSessionMinter interface {
+	GetNonce() (string, error)
 	Token() (string, error)
 }
 
@@ -64,6 +65,10 @@ func (t httpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	newReq.Header["User-Agent"] = []string{t.userAgent}
 	return rt.RoundTrip(&newReq)
+}
+
+func (t httpTransport) GetNonce() (string, error) {
+	return "", fmt.Errorf("This transport does not support obtaining nonces.")
 }
 
 func (t httpTransport) Token() (string, error) {

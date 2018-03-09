@@ -77,6 +77,14 @@ func (c *Client) WebsocketURL() *url.URL {
 	return c.websocketURL
 }
 
+func (c *Client) GetNonce() (string, error) {
+	return c.transport.Session.GetNonce()
+}
+
+func (c *Client) SessionToken() (string, error) {
+	return c.transport.Session.Token()
+}
+
 func newRequestID() string {
 	return uuid.NewV1().String()
 }

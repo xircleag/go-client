@@ -73,7 +73,7 @@ func (t clientCredentialTransport) RoundTrip(req *http.Request) (*http.Response,
 	return rt.RoundTrip(newReq)
 }
 
-func (t clientCredentialTransport) getNonce() (string, error) {
+func (t clientCredentialTransport) GetNonce() (string, error) {
 	// Create the URL
 	u, err := url.Parse("/nonces")
 	if err != nil {
@@ -82,7 +82,7 @@ func (t clientCredentialTransport) getNonce() (string, error) {
 	u = t.baseURL.ResolveReference(u)
 
 	// Create the request
-	req, err := http.NewRequest("POST", u.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
 	if err != nil {
 		return "", fmt.Errorf("Error creating nonce request: %v", err)
 	}
@@ -155,7 +155,7 @@ func (t clientCredentialTransport) Token() (string, error) {
 	// TODO: Handle re-using an existing token
 
 	// Get a nonce
-	nonce, err := t.getNonce()
+	nonce, err := t.GetNonce()
 	if err != nil {
 		return "", err
 	}
