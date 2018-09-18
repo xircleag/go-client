@@ -86,7 +86,7 @@ func (c *Client) SessionToken() (string, error) {
 }
 
 func newRequestID() string {
-	return uuid.NewV1().String()
+	return uuid.Must(uuid.NewV1()).String()
 }
 
 func getTimer(ctx context.Context) (timer *time.Timer) {

@@ -53,7 +53,13 @@ type Message struct {
 }
 
 type MessagePart struct {
-	// The message text.
+	// The message part ID
+	ID string `json:"id"`
+
+	// The message part URL
+	URL string `json:"url"`
+
+	// The message text
 	Body string `json:"body"`
 
 	// The MIME type of the part ("text/plain", "image/png", etc.).

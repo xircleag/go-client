@@ -27,7 +27,7 @@ type Conversation struct {
 	MessagesURL string `json:"messages_url,omitempty"`
 
 	// The time at which the conversation was initially created.
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 
 	// LastMessage is a message object representing the last message sent in the
 	// conversation.
@@ -35,7 +35,7 @@ type Conversation struct {
 
 	// Participants is an array of BasicIdentiy objects containing information on
 	// the message participants.
-	Participants []*BasicIdentity `json:"participants"`
+	Participants []*BasicIdentity `json:"participants,omitempty"`
 
 	// Distinct represents whether this is a distinct conversation with the
 	// specified participant list.

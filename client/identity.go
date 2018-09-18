@@ -5,11 +5,12 @@ import (
 )
 
 type BasicIdentity struct {
-	ID          string `json:"id",omitempty"`
-	URL         string `json:"url",omitempty"`
-	UserID      string `json:"user_id""`
-	DisplayName string `json:"display_name",omitempty"`
-	AvatarURL   string `json:"avatar_url",omitempty"`
+	ID           string `json:"id,omitempty"`
+	URL          string `json:"url,omitempty"`
+	UserID       string `json:"user_id,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+	AvatarURL    string `json:"avatar_url,omitempty"`
+	IdentityType string `json:"identity_type,omitempty"`
 }
 
 type Identity struct {
