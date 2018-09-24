@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	//"log"
 	"net/http"
 	"net/url"
@@ -324,6 +325,7 @@ func (c *Client) CreateConversationREST(ctx context.Context, participants []stri
 	if err != nil {
 		return nil, fmt.Errorf("Error creating conversation: %v", err)
 	}
+	log.Println("REST convo:", res)
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusConflict {

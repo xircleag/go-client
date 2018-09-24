@@ -41,8 +41,8 @@ func (t *HTTPTransport) Do(req *http.Request) (*http.Response, error) {
 }
 
 type HTTPSessionMinter interface {
-	GetNonce() (string, error)
-	Token() (string, error)
+	GetNonce(context.Context) (string, error)
+	Token(context.Context) (string, error)
 }
 
 type httpTransport struct {
@@ -67,11 +67,11 @@ func (t httpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return rt.RoundTrip(&newReq)
 }
 
-func (t httpTransport) GetNonce() (string, error) {
+func (t httpTransport) GetNonce(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("This transport does not support obtaining nonces.")
 }
 
-func (t httpTransport) Token() (string, error) {
+func (t httpTransport) Token(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("This transport does not support authentication")
 }
 

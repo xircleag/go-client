@@ -36,44 +36,40 @@ func (t clientCredentialTransport) RoundTrip(req *http.Request) (*http.Response,
 		return nil, fmt.Errorf("No transport specified")
 	}
 
+	if req.Context() == nil {
+		req.WithContext(t.ctx)
+	}
+
 	// See if need to generate a token
 	if t.token == "" && req.URL.Path != "/nonces" && req.URL.Path != "/sessions" {
-		token, err := t.Token()
+		token, err := t.Token(req.Context())
 		if err != nil {
 			return nil, err
 		}
 		t.token = token
 	}
 
-	// Build the new request
-	newReq := req
-	newReq.WithContext(t.ctx)
+	// Build the request
 	for k, v := range t.headers {
-		newReq.Header.Del(k)
+		req.Header.Del(k)
 		for _, val := range v {
-			newReq.Header.Add(k, val)
+			req.Header.Add(k, val)
 		}
 	}
-	for k, v := range req.Header {
-		newReq.Header.Del(k)
-		for _, val := range v {
-			newReq.Header.Add(k, val)
-		}
-	}
-	newReq.Header.Del("User-Agent")
-	newReq.Header.Add("User-Agent", t.userAgent)
+	req.Header.Del("User-Agent")
+	req.Header.Add("User-Agent", t.userAgent)
 	if t.token != "" {
-		newReq.Header.Del("Authorization")
-		newReq.Header.Add("Authorization", fmt.Sprintf("Layer session-token=\"%s\"", t.token))
+		req.Header.Del("Authorization")
+		req.Header.Add("Authorization", fmt.Sprintf("Layer session-token=\"%s\"", t.token))
 	}
 
 	// XXX
 	//fmt.Println(fmt.Sprintf("newReq: %+v", newReq))
 
-	return rt.RoundTrip(newReq)
+	return rt.RoundTrip(req)
 }
 
-func (t clientCredentialTransport) GetNonce() (string, error) {
+func (t clientCredentialTransport) GetNonce(ctx context.Context) (string, error) {
 	// Create the URL
 	u, err := url.Parse("/nonces")
 	if err != nil {
@@ -86,7 +82,7 @@ func (t clientCredentialTransport) GetNonce() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Error creating nonce request: %v", err)
 	}
-	req = req.WithContext(t.ctx)
+	req = req.WithContext(ctx)
 
 	// Send the request
 	res, err := t.RoundTrip(req)
@@ -100,20 +96,12 @@ func (t clientCredentialTransport) GetNonce() (string, error) {
 	}
 
 	// Parse the body
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return "", fmt.Errorf("Error parsing nonce response")
-	}
-
 	var data ClientNonceRequest
-	if err := json.Unmarshal(body, &data); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&data); err != nil || data.Nonce == "" {
 		return "", fmt.Errorf("Error parsing nonce JSON")
 	}
-	if data.Nonce != "" {
-		return data.Nonce, nil
-	}
 
-	return "", fmt.Errorf("Error parsing nonce JSON")
+	return data.Nonce, nil
 }
 
 func (t clientCredentialTransport) generateToken(nonce string) (string, error) {
@@ -149,13 +137,13 @@ func (t clientCredentialTransport) generateToken(nonce string) (string, error) {
 	return ts, nil
 }
 
-func (t clientCredentialTransport) Token() (string, error) {
+func (t clientCredentialTransport) Token(ctx context.Context) (string, error) {
 	var err error
 
 	// TODO: Handle re-using an existing token
 
 	// Get a nonce
-	nonce, err := t.GetNonce()
+	nonce, err := t.GetNonce(ctx)
 	if err != nil {
 		return "", err
 	}

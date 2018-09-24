@@ -41,6 +41,18 @@ type Websocket struct {
 	handlers *websocketEventHandlerSet
 	sync.RWMutex
 	isListening bool
+	Headers     http.Header
+}
+
+func NewWebsocket(opts ...WebsocketOption) (ws *Websocket, err error) {
+	ws = new(Websocket)
+
+	for _, opt := range opts {
+		if err = opt(ws); err != nil {
+			return
+		}
+	}
+	return
 }
 
 type WebsocketPacket struct {
@@ -198,7 +210,7 @@ func (w *Websocket) connect() error {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	token, err := w.client.transport.Session.Token()
+	token, err := w.client.transport.Session.Token(context.TODO())
 	if err != nil {
 		return err
 	}

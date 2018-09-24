@@ -13,10 +13,10 @@ type ClientOption interface {
 }
 
 func OverrideURL(u *url.URL) ClientOption {
-	return overrideURL{ u }
+	return overrideURL{u}
 }
 
-type overrideURL struct { baseURL *url.URL}
+type overrideURL struct{ baseURL *url.URL }
 
 func (o overrideURL) Apply(s *common.DialSettings) {
 	s.BaseURL = o.baseURL
