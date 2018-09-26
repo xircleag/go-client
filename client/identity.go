@@ -1,36 +1,18 @@
 package client
 
 import (
+	"github.com/layerhq/go-client/common"
+
 	"golang.org/x/net/context"
 )
 
-type BasicIdentity struct {
-	ID           string `json:"id,omitempty"`
-	URL          string `json:"url,omitempty"`
-	UserID       string `json:"user_id,omitempty"`
-	DisplayName  string `json:"display_name,omitempty"`
-	AvatarURL    string `json:"avatar_url,omitempty"`
-	IdentityType string `json:"identity_type,omitempty"`
-}
-
-type Identity struct {
-	BasicIdentity
-	FirstName    string            `json:"first_name,omitempty"`
-	LastName     string            `json:"last_name,omitempty"`
-	PhoneNumber  string            `json:"phone_number,omitempty"`
-	EmailAddress string            `json:"email_address,omitempty"`
-	IdentityType string            `json:"identity_type,omitempty"`
-	PublicKey    string            `json:"public_key,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-}
-
 // Identity fetches the identity with the given ID
-func (c *Client) Identity(id string) (*Identity, error) {
+func (c *Client) Identity(id string) (*common.Identity, error) {
 	return nil, nil
 }
 
 // Followed returns a list of Identity objects that represent users following the client user
-func (c *Client) Followed(ctx context.Context) ([]*Identity, error) {
+func (c *Client) Followed(ctx context.Context) ([]*common.Identity, error) {
 	return nil, nil
 }
 

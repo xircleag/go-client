@@ -4,109 +4,36 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
+	"strconv"
+	"strings"
 
 	"github.com/layerhq/go-client/common"
-	"errors"
 	"github.com/layerhq/go-client/iterator"
-	"strconv"
 )
 
-type Message struct {
-	// ID uniquely identifies the message.
-	ID string `json:"id,omitempty"`
-
-	// URL is the URL for accessing the conversation via the Layer REST API.
-	URL string `json:"url,omitempty"`
-
-	// The URL for the message receipt status.
-	ReceiptsURL string `json:"receipts_url,omitempty"`
-
-	// Per-Client ordering of the message in the conversation.
-	Position json.Number `json:"-"`
-
-	// Conversation that the message is part of.
-	Conversation *Conversation `json:"conversation,omitempty"`
-
-	// An array of message parts.
-	Parts []*MessagePart `json:"parts,omitempty"`
-
-	// The time at which the message was sent.
-	SentAt time.Time `json:"sent_at"`
-
-	// The identity of the message sender.
-	Sender *BasicIdentity `json:"sender,omitempty"`
-
-	// Indicates if the user has read the message.
-	Unread bool `json:"is_unread,omitempty"`
-
-	// A map of identity URLs and message status (sent, delivered, read).
-	RecipientStatus map[string]string `json:"recipient_status,omitempty"`
-}
-
-type MessagePart struct {
-	// The message text.
-	Body string `json:"body"`
-
-	// The MIME type of the part ("text/plain", "image/png", etc.).
-	MimeType string `json:"mime_type"`
-
-	// "base64" if the Body is Base64 encoded
-	Encoding string `json:"encoding,omitempty"`
-
-	// Content is set if the message part contains over 2KB of data, and
-	// contains data on the external data.
-	Content *MessagePartContent `json:"content,omitempty"`
-}
-
-type MessagePartContent struct {
-	// ID uniquely identifies the message part external content.
-	ID string `json:"id"`
-
-	// The URL at which the external content data can be access.
-	DownloadURL string `json:"download_url"`
-
-	// The date and time at which the DownloadURL expires.
-	Expiration time.Time
-
-	// URL to call to refresh the DownloadURL upon expiration.
-	RefreshURL string `json:"refresh_url,omitempty"`
-
-	// The size in bytes of the content payload.
-	Size json.Number
-}
-
-type MessageNotification struct {
-	// The title of the notification that will be presented with the notification.
-	Title string `json:"title,omitempty"`
-
-	// The text body that will be presented with the notification.
-	Text string `json:"text,omitempty"`
-
-	// The optional sound that will be played with the notification.
-	Sound string `json:"sound,omitempty"`
-}
-
-type Schedule struct {
-	DelayInSeconds float64 `json:"delay_in_seconds"`
+// MessageSchedule defines a delayed message schedule
+type MessageSchedule struct {
+	DelayInSeconds           float64 `json:"delay_in_seconds"`
 	TypingIndicatorInSeconds float64 `json:"typing_indicator_in_seconds"`
 }
 
+// MessageCreate contains detail on a new message
 type MessageCreate struct {
-	SenderID 	 string				   `json:"sender_id"`
-	Parts        []*MessagePart       `json:"parts"`
-	Notification *MessageNotification `json:"notification,omitempty"`
-	Schedule     *Schedule            `json:"schedule,omitempty"`
+	SenderID     string                      `json:"sender_id"`
+	Parts        []*common.MessagePart       `json:"parts"`
+	Notification *common.MessageNotification `json:"notification,omitempty"`
+	Schedule     *MessageSchedule            `json:"schedule,omitempty"`
 }
 
 // plaintextMessage is a helper function that returns a Message with a single "text/plain" message part
-func plaintextMessage(content string) *Message {
-	return &Message{
-		Parts: []*MessagePart{
-			&MessagePart{
+func plaintextMessage(content string) *common.Message {
+	return &common.Message{
+		Parts: []*common.MessagePart{
+			&common.MessagePart{
 				Body:     content,
 				MimeType: "text/plain",
 			},
@@ -114,99 +41,111 @@ func plaintextMessage(content string) *Message {
 	}
 }
 
-// SendMessage sends a message to the server.  Note that if a schedule, is included then the returned Message
-// pointer will be nil since the message will be created in the future.
-func (convo *Conversation) SendMessage(ctx context.Context, mc *MessageCreate) (*Message, error) {
+func (convo *Conversation) buildMessageURL(id string) (u *url.URL, err error) {
+	u, err = url.Parse(strings.TrimSuffix(fmt.Sprintf("conversations/%s/messages/%s", convo.UUID(), id), "/"))
+	if err != nil {
+		return
+	}
+	u = convo.Client.baseURL.ResolveReference(u)
+	return
+}
+
+// SendMessage sends a message to the server
+func (convo *Conversation) SendMessage(ctx context.Context, sender string, parts []*common.MessagePart, notification *common.MessageNotification, schedule *MessageSchedule) (*common.Message, error) {
 	if convo.Client == nil {
-		return nil, errors.New("apiClient not set in conversation")
+		return nil, errors.New("Client not set in conversation")
 	}
 
 	// Build the URL
-	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convo.ID()))
+	u, err := convo.buildMessageURL("")
 	if err != nil {
-		return nil, fmt.Errorf("error building conversation message URL: %v", err)
+		return nil, fmt.Errorf("Error building message URL: %v", err)
 	}
-	u = convo.Client.baseURL.ResolveReference(u)
+
+	mc := &MessageCreate{
+		SenderID:     sender,
+		Parts:        parts,
+		Notification: notification,
+		Schedule:     schedule,
+	}
 
 	// Create the request
 	query, err := json.Marshal(mc)
 	if err != nil {
-		return nil, fmt.Errorf("error creating conversation JSON: %v", err)
+		return nil, fmt.Errorf("Error creating conversation JSON: %v", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(query))
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("Error creating request: %v", err)
 	}
 	req = req.WithContext(ctx)
 
 	// Send the request
 	res, err := convo.Client.transport.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
+		return nil, fmt.Errorf("Error sending request: %v", err)
 	}
 	defer res.Body.Close()
 
 	switch {
 	case res.StatusCode == http.StatusConflict:
-		return nil, fmt.Errorf("the requested message already exists")
+		return nil, fmt.Errorf("Requested message already exists")
 	case res.StatusCode == http.StatusAccepted:
 		return nil, nil
 	case res.StatusCode != http.StatusCreated:
-		return nil, fmt.Errorf("status code is %d", res.StatusCode)
+		return nil, fmt.Errorf("Status code is %d", res.StatusCode)
 	}
 
-	var message *Message
-	err = json.NewDecoder(res.Body).Decode(message)
+	var message *common.Message
+	err = json.NewDecoder(res.Body).Decode(&message)
 	return message, err
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message
-func (convo *Conversation) SendTextMessage(ctx context.Context, senderID string, message string, notification *MessageNotification) (*Message, error) {
+func (convo *Conversation) SendTextMessage(ctx context.Context, sender string, message string, notification *common.MessageNotification) (*common.Message, error) {
 	msg := plaintextMessage(message)
-	return convo.SendMessage(ctx, &MessageCreate{senderID, msg.Parts, notification, nil})
+	return convo.SendMessage(ctx, sender, msg.Parts, notification, nil)
 }
 
-// SendMessage sends a message to the server.  Note that if a schedule, is included then the returned Message
-// pointer will be nil since the message will be created in the future.
+// SendMessage sends a message batch
 func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCreate) error {
 	if convo.Client == nil {
-		return errors.New("apiClient not set in conversation")
+		return errors.New("Client not set in conversation")
 	}
 	if len(mc) > 12 {
-		return errors.New("maximum 12 messages are supported")
+		return errors.New("A maximum of 12 messages are supported")
 	}
 
 	for i := range mc {
-		mc[i].SenderID = common.LayerID(common.IdentitiesName, mc[i].SenderID)
+		mc[i].SenderID = common.LayerURL(common.IdentitiesName, mc[i].SenderID)
 	}
 
 	// Build the URL
-	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convo.ID()))
+	u, err := convo.buildMessageURL("")
 	if err != nil {
-		return fmt.Errorf("error building conversation message URL: %v", err)
+		return fmt.Errorf("Error building message URL: %v", err)
 	}
-	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	query, err := json.Marshal(mc)
 	if err != nil {
-		return fmt.Errorf("error creating conversation JSON: %v", err)
+		return fmt.Errorf("Error creating conversation JSON: %v", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(query))
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return fmt.Errorf("Error creating request: %v", err)
 	}
 	req = req.WithContext(ctx)
 
 	// Send the request
 	res, err := convo.Client.transport.Do(req)
 	if err != nil {
-		return fmt.Errorf("error sending request: %v", err)
+		return fmt.Errorf("Error sending request: %v", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("status is %d", res.StatusCode)
+		return fmt.Errorf("Status is %d", res.StatusCode)
 	}
 
 	return nil
@@ -216,14 +155,14 @@ func (convo *Conversation) SendMessageBatch(ctx context.Context, mc []MessageCre
 type MessageIterator struct {
 	ctx          context.Context
 	conversation *Conversation
-	messages     []*Message
+	messages     []*common.Message
 	current      int
 	from         string
 	sort         string
 }
 
 // Next returns the next slice of messages
-func (it *MessageIterator) Next() (*Message, error) {
+func (it *MessageIterator) Next() (*common.Message, error) {
 	it.current++
 	if it.current > len(it.messages) {
 		// First try to get a new page
@@ -246,19 +185,17 @@ func (it *MessageIterator) Next() (*Message, error) {
 }
 
 // MessagesFrom gets all messages on a conversation from the specified offset
-func (convo *Conversation) MessagesFrom(ctx context.Context, from string, pageSize int) ([]*Message, error) {
-	// Create the request URL
-	convoID := common.UUIDFromLayerURL(convo.ID())
-	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convoID))
+func (convo *Conversation) MessagesFrom(ctx context.Context, from string, pageSize int) ([]*common.Message, error) {
+	// Build the URL
+	u, err := convo.buildMessageURL("")
 	if err != nil {
-		return nil, fmt.Errorf("error building conversation message URL: %v", err)
+		return nil, fmt.Errorf("Error building message URL: %v", err)
 	}
-	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("Error creating request: %v", err)
 	}
 	req = req.WithContext(ctx)
 	q := req.URL.Query()
@@ -276,15 +213,15 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string, pageSi
 	// Send the request
 	res, err := convo.Client.transport.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
+		return nil, fmt.Errorf("Error sending request: %v", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
-		return nil, fmt.Errorf("status code is %d", res.StatusCode)
+		return nil, fmt.Errorf("Status code is %d", res.StatusCode)
 	}
 
-	var messages []*Message
+	var messages []*common.Message
 	err = json.NewDecoder(res.Body).Decode(messages)
 	return messages, err
 }
@@ -307,132 +244,30 @@ func (convo *Conversation) Messages(ctx context.Context) (*MessageIterator, erro
 	}, nil
 }
 
-func (convo *Conversation) DeleteMessage(ctx context.Context, msgID string) (error) {
-	// Create the request URL
-	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages/%s", common.UUIDFromLayerURL(convo.Id), common.UUIDFromLayerURL(msgID)))
+// DeleteMessage deletes a message
+func (convo *Conversation) DeleteMessage(ctx context.Context, messageID string) error {
+	// Build the URL
+	u, err := convo.buildMessageURL(messageID)
 	if err != nil {
-		return fmt.Errorf("error building conversation message URL: %v", err)
+		return fmt.Errorf("Error building message URL: %v", err)
 	}
-	u = convo.Client.baseURL.ResolveReference(u)
 
 	// Create the request
 	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return fmt.Errorf("Error creating request: %v", err)
 	}
 	req = req.WithContext(ctx)
 
 	// Send the request
 	res, err := convo.Client.transport.Do(req)
 	if err != nil {
-		return fmt.Errorf("error sending request: %v", err)
+		return fmt.Errorf("Error sending request: %v", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("status code is %d", res.StatusCode)
-	}
-
-	return nil
-}
-
-type AnnouncementCreate struct {
-	NotificationCreate
-	SenderID     string               `json:"sender_id"`
-	Parts        []*MessagePart       `json:"parts"`
-}
-
-type Announcement struct {
-	ID string			 `json:"id"`
-	URL string			 `json:"url"`
-	SentAt string		 `json:"sent_at"`
-	Recipients []string  `json:"recipients"`
-	Sender BasicIdentity `json:"sender"`
-	Parts []*MessagePart `json:"parts"`
-}
-
-type NotificationCreate struct {
-	Recipients   []string    		  `json:"recipients"`
-	Notification *MessageNotification `json:"notification,omitempty"`
-}
-
-func (s *Server) SendAnnouncement(ctx context.Context, ac *AnnouncementCreate) (*Announcement, error) {
-	// Build the URL
-	u, err := url.Parse("/announcements")
-	if err != nil {
-		return nil, fmt.Errorf("error building announcement URL: %v", err)
-	}
-	u = s.baseURL.ResolveReference(u)
-
-	for i := range ac.Recipients {
-		ac.Recipients[i] = common.LayerID(common.IdentitiesName, ac.Recipients[i])
-	}
-
-	// Create the request
-	query, err := json.Marshal(ac)
-	if err != nil {
-		return nil, fmt.Errorf("error creating announcement JSON: %v", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(query))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-	req = req.WithContext(ctx)
-
-	// Send the request
-	res, err := s.transport.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusAccepted {
-		return nil, fmt.Errorf("status is %d", res.StatusCode)
-	}
-
-	var announcement *Announcement
-	err = json.NewDecoder(res.Body).Decode(announcement)
-	return announcement, err
-}
-
-// SendTextMessage is a helper function to send a single-part plaintext message
-func (s *Server) SendTextAnnouncement(ctx context.Context, senderID string, recipients []string, message string, notification *MessageNotification) (*Announcement, error) {
-	msg := plaintextMessage(message)
-	return s.SendAnnouncement(ctx, &AnnouncementCreate{NotificationCreate{recipients, notification}, senderID, msg.Parts})
-}
-
-func (s *Server) SendNotification(ctx context.Context, notification *NotificationCreate) error {
-	for i := range notification.Recipients {
-		notification.Recipients[i] = common.LayerID(common.IdentitiesName, notification.Recipients[i])
-	}
-
-	// Build the URL
-	u, err := url.Parse("/notifications")
-	if err != nil {
-		return fmt.Errorf("error building notification URL: %v", err)
-	}
-	u = s.baseURL.ResolveReference(u)
-
-	// Create the request
-	query, err := json.Marshal(notification)
-	if err != nil {
-		return fmt.Errorf("error creating notification JSON: %v", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(query))
-	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
-	}
-	req = req.WithContext(ctx)
-
-	// Send the request
-	res, err := s.transport.Do(req)
-	if err != nil {
-		return fmt.Errorf("error sending request: %v", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("status is %d", res.StatusCode)
+		return fmt.Errorf("Status code is %d", res.StatusCode)
 	}
 
 	return nil

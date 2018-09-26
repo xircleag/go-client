@@ -1,3 +1,4 @@
+// Package iterator implements a definitive iterator
 package iterator
 
 import (

@@ -7,49 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
-	//"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/layerhq/common"
 
 	"github.com/layerhq/go-client/iterator"
 )
 
 type Conversation struct {
-	// ID uniquely identifies the conversation.
-	ID string `json:"id,omitempty"`
-
-	// URL is the URL for accessing the conversation via the Layer REST API.
-	URL string `json:"url,omitempty"`
-
-	// MessagesURL is the URL for access the conversation messages via the Layer.
-	// REST API.
-	MessagesURL string `json:"messages_url,omitempty"`
-
-	// The time at which the conversation was initially created.
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-
-	// LastMessage is a message object representing the last message sent in the
-	// conversation.
-	LastMessage *Message `json:"last_message,omitempty"`
-
-	// Participants is an array of BasicIdentiy objects containing information on
-	// the message participants.
-	Participants []*BasicIdentity `json:"participants,omitempty"`
-
-	// Distinct represents whether this is a distinct conversation with the
-	// specified participant list.
-	Distinct bool `json:"distinct"`
-
-	// The number of unread messages on the conversation for the user specified
-	// by the Client.
-	UnreadMessageCount json.Number `json:"unread_message_count,omitempty"`
-
-	// A generic interface available to store arbitrary metadata.
-	Metadata json.RawMessage `json:"metadata,omitempty"`
-
-	// Internal reference to the Client object.
+	common.Conversation
 	Client *Client `json:"-"`
 }
 
@@ -138,7 +106,6 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string
 	}
 	q.Add("page_size", "100")
 	req.URL.RawQuery = q.Encode()
-	//fmt.Println(fmt.Sprintf("%+v", req))
 
 	// Send the request
 	res, err := c.transport.Do(req)
@@ -166,8 +133,6 @@ func (c *Client) ConversationsFrom(ctx context.Context, sort string, from string
 		return nil, fmt.Errorf("Error parsing conversation create JSON: %v", err)
 	}
 
-	//fmt.Println(fmt.Sprintf("LENGTH: %+v", len(conversations)))
-	//fmt.Println(fmt.Sprintf("%+v", string(body)))
 	return conversations, nil
 }
 
@@ -234,7 +199,7 @@ func (c *Client) Conversation(ctx context.Context, id string) (*Conversation, er
 	return conversation, nil
 }
 
-// CreateConversation creates a conversation for the user specified by the client connection and returns the request id the user can look for on their receive channel
+// CreateConversation creates a conversation over the websocket interface
 func (c *Client) CreateConversation(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
@@ -243,8 +208,10 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 		Metadata:     metadata,
 	}
 
+	// Generate a request ID
 	reqID := newRequestID()
 
+	// Build the websocket packet
 	packet := &WebsocketPacket{
 		Type: "request",
 		Body: WebsocketRequest{
@@ -257,6 +224,7 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	result := make(chan *Conversation)
 	errs := make(chan error, 2)
 
+	// Register a websocket handler
 	unsub := c.Websocket.HandleFunc(WebsocketChangeConversationCreate, func(w *Websocket, p *WebsocketPacket) {
 		resp, ok := p.Body.(*WebsocketResponse)
 		if !ok || resp.RequestID != reqID {
@@ -279,10 +247,12 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 
 	timer := getTimer(ctx)
 
+	// Send the packet
 	if err := c.Websocket.Send(ctx, packet); err != nil {
 		return nil, err
 	}
 
+	// Wait for the reply or timeout
 	var conversation *Conversation
 	select {
 	case conversation = <-result:
@@ -294,7 +264,7 @@ func (c *Client) CreateConversation(ctx context.Context, participants []string, 
 	}
 }
 
-// CreateConversation creates a conversation for the user specified by the Client connection
+// CreateConversationREST creates a conversation over the REST API interface
 func (c *Client) CreateConversationREST(ctx context.Context, participants []string, distinct bool, metadata interface{}) (*Conversation, error) {
 	// Create the request object
 	cc := &conversationCreate{
@@ -325,7 +295,6 @@ func (c *Client) CreateConversationREST(ctx context.Context, participants []stri
 	if err != nil {
 		return nil, fmt.Errorf("Error creating conversation: %v", err)
 	}
-	log.Println("REST convo:", res)
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusConflict {
@@ -404,14 +373,17 @@ func (convo *Conversation) Delete(ctx context.Context, mode *string, leave bool)
 	return nil
 }
 
+// UupdateMetdata updates the conversation metadata
 func (convo *Conversation) UpdateMetadata(ctx context.Context, metadata interface{}) error {
 	return errors.New("Not implemented")
 }
 
+// AddParticipants updates the participants in a conversation
 func (convo *Conversation) AddParticipants(ctx context.Context, participants []string) error {
 	return errors.New("Not implemented")
 }
 
+// RemoveParticipants removes participants from a conversation
 func (convo *Conversation) RemoveParticipants(ctx context.Context, participants []string) error {
 	return errors.New("Not implemented")
 }

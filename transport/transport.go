@@ -1,3 +1,4 @@
+// Package transport implements underlying authentication and transport
 package transport
 
 import (
@@ -6,13 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/layerhq/go-client/common"
 	"github.com/layerhq/go-client/option"
 
 	"golang.org/x/net/context"
-	//"golang.org/x/net/context/ctxhttp"
 )
 
 var DefaultTransport http.RoundTripper = &http.Transport{
@@ -76,49 +77,64 @@ func (t httpTransport) Token(ctx context.Context) (string, error) {
 }
 
 func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, websocketURL *url.URL, opts ...option.ClientOption) (*HTTPTransport, error) {
+	baseTransport := DefaultTransport
+
 	var o common.DialSettings
 	for _, opt := range opts {
 		opt.Apply(&o)
 	}
 
 	if o.UserAgent == "" {
-		// TODO: Inject proper version
-		o.UserAgent = fmt.Sprintf("Layer Go Client version 0.0.1")
+		o.UserAgent = fmt.Sprintf("Layer go-client version 0.1")
+	}
+
+	if o.AllowInsecure {
+		baseTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	// Bearer token transport
+	if o.BearerToken != "" {
+		t := &bearerTokenTransport{
+			token:     o.BearerToken,
+			baseURL:   baseURL,
+			ctx:       ctx,
+			userAgent: o.UserAgent,
+			headers:   o.Headers,
+			base:      baseTransport,
+		}
+
+		return &HTTPTransport{
+			client: &http.Client{Transport: t},
+		}, nil
 	}
 
 	// Credentialed client
-	if o.ClientCredentials != nil {
+	if o.ClientCredentials != nil && o.ClientCredentials.Key != nil {
 		o.ClientCredentials.ApplicationID = appID
+		o.TokenFunc = func(user, nonce string) (token string, err error) {
+			return localCredentialTokenFactory(o.ClientCredentials, nonce)
+		}
+	}
 
-		t := clientCredentialTransport{
+	// Token provider transport
+	if o.TokenFunc != nil {
+		o.ClientCredentials.ApplicationID = appID
+		t := &tokenProviderTransport{
+			tokenFactory: o.TokenFunc,
+			tokenTimeout: 10 * time.Second,
 			credentials:  o.ClientCredentials,
 			baseURL:      baseURL,
 			websocketURL: websocketURL,
 			ctx:          ctx,
 			userAgent:    o.UserAgent,
 			headers:      o.Headers,
-			base:         DefaultTransport,
+			base:         baseTransport,
 		}
+		t.tokenMu = &sync.Mutex{}
 
 		return &HTTPTransport{
 			Session: t,
 			client:  &http.Client{Transport: t},
-		}, nil
-	}
-
-	// Bearer token transport
-	if o.BearerToken != "" {
-		t := bearerTokenTransport{
-			token:     o.BearerToken,
-			baseURL:   baseURL,
-			ctx:       ctx,
-			userAgent: o.UserAgent,
-			headers:   o.Headers,
-			base:      DefaultTransport,
-		}
-
-		return &HTTPTransport{
-			client: &http.Client{Transport: t},
 		}, nil
 	}
 
@@ -127,7 +143,7 @@ func NewHTTPTransport(ctx context.Context, appID string, baseURL *url.URL, webso
 		ctx:       ctx,
 		userAgent: o.UserAgent,
 		headers:   o.Headers,
-		base:      DefaultTransport,
+		base:      baseTransport,
 	}
 
 	return &HTTPTransport{

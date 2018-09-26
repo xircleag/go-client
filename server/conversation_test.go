@@ -1,8 +1,8 @@
 package server
 
 import (
-	"testing"
 	"context"
+	"testing"
 
 	"github.com/layerhq/go-client/common"
 )
@@ -19,6 +19,10 @@ func createConversation(c *Server) (*Conversation, error) {
 }
 
 func TestCreateConversation(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +35,10 @@ func TestCreateConversation(t *testing.T) {
 }
 
 func TestConversation(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
 		t.Fatal(err)
@@ -41,13 +49,17 @@ func TestConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = c.Conversation(context.Background(), convo.ID())
+	_, err = c.Conversation(context.Background(), convo.UUID())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestConversation_Delete(t *testing.T) {
+func TestConversationDelete(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +78,11 @@ func TestConversation_Delete(t *testing.T) {
 	}
 }
 
-func TestConversation_UpdateParticipants(t *testing.T) {
+func TestConversationUpdateParticipants(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +105,11 @@ func TestConversation_UpdateParticipants(t *testing.T) {
 	}
 }
 
-func TestConversation_UpdateMetadata(t *testing.T) {
+func TestConversationUpdateMetadata(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +130,10 @@ func TestConversation_UpdateMetadata(t *testing.T) {
 	}
 }
 
-func TestConversation_MarkRead(t *testing.T) {
+func TestConversationMarkRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	// TODO: implement once we can write messages
 }

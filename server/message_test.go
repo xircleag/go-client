@@ -1,20 +1,28 @@
 package server
 
 import (
-	"testing"
 	"context"
+	"testing"
 )
 
-func createTextMessage(c *Server) (*Message, error) {
+func TestCreateTextMessage(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	c, err := createTestClient()
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 
-	convo, err := createConversation(c)
+	conversation, err := createConversation(c)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 
-	return convo.SendTextMessage(context.Background(), "test", "Hello there, how are you?", &MessageNotification{})
+	ctx := context.Background()
+	_, err = conversation.SendTextMessage(ctx, "layer:///identities/test", "Test Message", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

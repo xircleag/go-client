@@ -10,39 +10,10 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/layerhq/go-client/common"
+
 	"golang.org/x/net/context"
 )
-
-type Identity struct {
-	ID           string            `json:"id,omitempty"`
-	URL          string            `json:"url,omitempty"`
-	UserID       string            `json:"user_id,omitempty"`
-	DisplayName  string            `json:"display_name,omitempty"`
-	AvatarURL    string            `json:"avatar_url,omitempty"`
-	FirstName    string            `json:"first_name,omitempty"`
-	LastName     string            `json:"last_name,omitempty"`
-	PhoneNumber  string            `json:"phone_number,omitempty"`
-	EmailAddress string            `json:"email_address,omitempty"`
-	IdentityType string            `json:"identity_type,omitempty"`
-	PublicKey    string            `json:"public_key,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-}
-
-type BasicIdentity struct {
-	ID          string `json:id`
-	URL         string `json:url`
-	UserID      string `json:user_id`
-	DisplayName string `json:display_name,omitempty`
-	AvatarURL   string `json:avatar_url,omitempty`
-}
-
-func (bi *BasicIdentity) LayerID() string {
-	prefix := "layer:///identities/"
-	if strings.HasPrefix(bi.ID, prefix) {
-		return bi.ID
-	}
-	return prefix + bi.ID
-}
 
 func (s *Server) buildIdentityURL(id string) (*url.URL, error) {
 	var err error
@@ -59,7 +30,8 @@ func (s *Server) buildIdentityURL(id string) (*url.URL, error) {
 	return u, nil
 }
 
-func (s *Server) Identity(ctx context.Context, userID string) (*Identity, error) {
+// Identity gets the identity object for a user ID
+func (s *Server) Identity(ctx context.Context, userID string) (*common.Identity, error) {
 	// Create the request URL
 	u, err := s.buildIdentityURL(userID)
 	if err != nil {
@@ -93,14 +65,14 @@ func (s *Server) Identity(ctx context.Context, userID string) (*Identity, error)
 		return nil, fmt.Errorf("Error parsing conversation create response")
 	}
 
-	var identity *Identity
+	var identity *common.Identity
 	if err := json.Unmarshal(body, &identity); err != nil {
 		return nil, fmt.Errorf("Error parsing identity JSON: %v", err)
 	}
 	return identity, nil
 }
 
-func (s *Server) CreateIdentity(ctx context.Context, identity *Identity) (*Identity, error) {
+func (s *Server) CreateIdentity(ctx context.Context, identity *common.Identity) (*common.Identity, error) {
 	// Create the request URL
 	u, err := s.buildIdentityURL(identity.UserID)
 	if err != nil {
@@ -167,7 +139,7 @@ func (s *Server) DeleteIdentity(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (s *Server) UpdateIdentity(ctx context.Context, identity *Identity, upsert bool) (*Identity, error) {
+func (s *Server) UpdateIdentity(ctx context.Context, identity *common.Identity, upsert bool) (*common.Identity, error) {
 	if identity.UserID == "" {
 		return nil, fmt.Errorf("UserID must be set on the Identity object")
 	}
@@ -205,15 +177,16 @@ func (s *Server) UpdateIdentity(ctx context.Context, identity *Identity, upsert 
 		}
 	}
 
-	if !needUpdate && len(identity.Metadata) > 0 {
-		return nil, fmt.Errorf("Nothing to update")
+	if !needUpdate && len(identity.Metadata) == 0 {
+		// Nothing to update
+		return nil, nil
 	}
 
-	var data []*updateOperation
+	var data []*UpdateOperation
 	if len(identity.Metadata) > 0 {
 		metadataJSON, err := json.Marshal(identity.Metadata)
 		if err == nil {
-			data = append(data, &updateOperation{
+			data = append(data, &UpdateOperation{
 				Operation: "set",
 				Property:  "metadata",
 				Value:     metadataJSON,
@@ -221,7 +194,7 @@ func (s *Server) UpdateIdentity(ctx context.Context, identity *Identity, upsert 
 		}
 	}
 	for key, value := range updates {
-		data = append(data, &updateOperation{
+		data = append(data, &UpdateOperation{
 			Operation: "set",
 			Property:  key,
 			Value:     value,

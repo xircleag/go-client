@@ -1,3 +1,4 @@
+// Package server providers and interface to the Layer Server API
 package server
 
 import (
@@ -15,7 +16,7 @@ type Server struct {
 	transport *transport.HTTPTransport
 }
 
-type updateOperation struct {
+type UpdateOperation struct {
 	Operation string      `json:"operation"`
 	Property  string      `json:"property"`
 	Value     interface{} `json:"value"`
@@ -28,11 +29,11 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 		return nil, fmt.Errorf("Error building base URL: %v", err)
 	}
 
-	return NewTestClient(ctx, u, appID, options...)
+	return NewClientWithURLs(ctx, u, appID, options...)
 }
 
 // NewTestClient
-func NewTestClient(ctx context.Context, u *url.URL, appID string, options ...option.ClientOption) (*Server, error) {
+func NewClientWithURLs(ctx context.Context, u *url.URL, appID string, options ...option.ClientOption) (*Server, error) {
 	headers := map[string][]string{
 		"Accept":       {"application/vnd.layer+json; version=3.0"},
 		"Content-Type": {"application/json"},

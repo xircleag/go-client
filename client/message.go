@@ -20,100 +20,19 @@ const (
 	MessageRecipientStatusRead      = "read"
 )
 
-type Message struct {
-	// ID uniquely identifies the message.
-	ID string `json:"id,omitempty"`
-
-	// URL is the URL for accessing the conversation via the Layer REST API.
-	URL string `json:"url,omitempty"`
-
-	// The URL for the message receipt status.
-	ReceiptsURL string `json:"receipts_url,omitempty"`
-
-	// Per-Client ordering of the message in the conversation.
-	Position json.Number `json:"-"`
-
-	// Conversation that the message is part of.
-	Conversation *Conversation `json:"conversation,omitempty"`
-
-	// An array of message parts.
-	Parts []*MessagePart `json:"parts,omitempty"`
-
-	// The time at which the message was sent.
-	SentAt time.Time `json:"sent_at"`
-
-	// The identity of the message sender.
-	Sender *BasicIdentity `json:"sender,omitempty"`
-
-	// Indicates if the user has read the message.
-	Unread bool `json:"is_unread,omitempty"`
-
-	// A map of identity URLs and message status (sent, delivered, read).
-	RecipientStatus map[string]string `json:"recipient_status,omitempty"`
-}
-
-type MessagePart struct {
-	// The message part ID
-	ID string `json:"id"`
-
-	// The message part URL
-	URL string `json:"url"`
-
-	// The message text
-	Body string `json:"body"`
-
-	// The MIME type of the part ("text/plain", "image/png", etc.).
-	MimeType string `json:"mime_type"`
-
-	// "base64" if the Body is Base64 encoded
-	Encoding string `json:"encoding,omitempty"`
-
-	// Content is set if the message part contains over 2KB of data, and
-	// contains data on the external data.
-	Content *MessagePartContent `json:"content,omitempty"`
-}
-
-type MessagePartContent struct {
-	// ID uniquely identifies the message part external content.
-	ID string `json:"id"`
-
-	// The URL at which the external content data can be access.
-	DownloadURL string `json:"download_url"`
-
-	// The date and time at which the DownloadURL expires.
-	Expiration time.Time
-
-	// URL to call to refresh the DownloadURL upon expiration.
-	RefreshURL string `json:"refresh_url,omitempty"`
-
-	// The size in bytes of the content payload.
-	Size json.Number
-}
-
-type MessageNotification struct {
-	// The title of the notification that will be presented with the notification.
-	Title string `json:"title,omitempty"`
-
-	// The text body that will be presented with the notification.
-	Text string `json:"text,omitempty"`
-
-	// The optional sound that will be played with the notification.
-	Sound string `json:"sound,omitempty"`
-}
-
 type messageCreate struct {
-	Parts        []*MessagePart       `json:"parts"`
-	Notification *MessageNotification `json:"notification,omitempty"`
+	Parts        []*common.MessagePart       `json:"parts"`
+	Notification *common.MessageNotification `json:"notification,omitempty"`
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message
-func (convo *Conversation) SendTextMessage(ctx context.Context, message string, notification *MessageNotification) (*Message, error) {
+func (convo *Conversation) SendTextMessage(ctx context.Context, message string, notification *common.MessageNotification) (*common.Message, error) {
 	msg := plaintextMessage(message)
 	return convo.SendMessage(ctx, msg.Parts, notification)
 }
 
 // SendMessage sends a message on the current conversation
-func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart, notification *MessageNotification) (*Message, error) {
+func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart, notification *common.MessageNotification) (*common.Message, error) {
 	mc := &messageCreate{
 		Parts:        parts,
 		Notification: notification,
@@ -124,23 +43,23 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 	packet := &WebsocketPacket{
 		Type: "request",
 		Body: WebsocketRequest{
-			Method:    WebsocketChangeMessageCreate,
+			Method:    WebsocketMessageCreate,
 			RequestID: reqID,
 			ObjectID:  convo.ID,
 			Data:      mc,
 		},
 	}
 
-	result := make(chan *Message)
+	result := make(chan *common.Message)
 
-	// register a handler for the response
-	unsub := convo.Client.Websocket.HandleFunc(WebsocketChangeMessageCreate, func(w *Websocket, p *WebsocketPacket) {
+	// Register a handler for the response
+	unsub := convo.Client.Websocket.HandleFunc(WebsocketMessageCreate, func(w *Websocket, p *WebsocketPacket) {
 		resp, ok := p.Body.(*WebsocketResponse)
 		if !ok || resp.RequestID != reqID {
 			return
 		}
 
-		message, _ := resp.Data.(*Message)
+		message, _ := resp.Data.(*common.Message)
 		result <- message
 	})
 	defer unsub.Remove()
@@ -152,7 +71,7 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 		return nil, err
 	}
 
-	var message *Message
+	var message *common.Message
 	select {
 	case message = <-result:
 		return message, nil
@@ -162,13 +81,13 @@ func (convo *Conversation) SendMessage(ctx context.Context, parts []*MessagePart
 }
 
 // SendTextMessage is a helper function to send a single-part plaintext message
-func (convo *Conversation) SendTextMessageREST(ctx context.Context, message string, notification *MessageNotification) (*Message, error) {
+func (convo *Conversation) SendTextMessageREST(ctx context.Context, message string, notification *MessageNotification) (*common.Message, error) {
 	msg := plaintextMessage(message)
 	return convo.SendMessageREST(ctx, msg.Parts, notification)
 }
 
 // SendMessage sends a message on the current conversation
-func (convo *Conversation) SendMessageREST(ctx context.Context, parts []*MessagePart, notification *MessageNotification) (*Message, error) {
+func (convo *Conversation) SendMessageREST(ctx context.Context, parts []*common.MessagePart, notification *common.MessageNotification) (*common.Message, error) {
 	mc := &messageCreate{
 		Parts:        parts,
 		Notification: notification,
@@ -213,7 +132,7 @@ func (convo *Conversation) SendMessageREST(ctx context.Context, parts []*Message
 		return nil, fmt.Errorf("Error parsing response")
 	}
 
-	var message *Message
+	var message *common.Message
 	if err := json.Unmarshal(body, &message); err != nil {
 		return nil, fmt.Errorf("Error parsing message JSON: %v", err)
 	}
@@ -221,10 +140,10 @@ func (convo *Conversation) SendMessageREST(ctx context.Context, parts []*Message
 }
 
 // plaintextMessage is a helper function that returns a Message with a single "text/plain" message part
-func plaintextMessage(content string) *Message {
-	return &Message{
-		Parts: []*MessagePart{
-			&MessagePart{
+func plaintextMessage(content string) *common.Message {
+	return &common.Message{
+		Parts: []*common.MessagePart{
+			&common.MessagePart{
 				Body:     content,
 				MimeType: "text/plain",
 			},
@@ -236,14 +155,14 @@ func plaintextMessage(content string) *Message {
 type MessageIterator struct {
 	ctx          context.Context
 	conversation *Conversation
-	messages     []*Message
+	messages     []*common.Message
 	current      int
 	from         string
 	sort         string
 }
 
 // Next returns the next slice of messages
-func (it *MessageIterator) Next() (*Message, error) {
+func (it *MessageIterator) Next() (*common.Message, error) {
 	it.current++
 	if it.current > len(it.messages) {
 		// First try to get a new page
@@ -266,7 +185,7 @@ func (it *MessageIterator) Next() (*Message, error) {
 }
 
 // MessagesFrom gets all messages on a conversation from the specified offset
-func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Message, error) {
+func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*common.Message, error) {
 	// Create the request URL
 	convoID := common.UUIDFromLayerURL(convo.ID)
 	u, err := url.Parse(fmt.Sprintf("/conversations/%s/messages", convoID))
@@ -299,8 +218,8 @@ func (convo *Conversation) MessagesFrom(ctx context.Context, from string) ([]*Me
 		return nil, fmt.Errorf("Status code is %d", res.StatusCode)
 	}
 
-	var messages []*Message
-	err = json.NewDecoder(res.Body).Decode(messages)
+	var messages []*common.Message
+	err = json.NewDecoder(res.Body).Decode(&messages)
 	return messages, err
 }
 

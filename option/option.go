@@ -1,4 +1,4 @@
-// A package to manage client options
+// Package option manages client and transport options.
 package option
 
 import (
@@ -20,6 +20,18 @@ type overrideURL struct{ baseURL *url.URL }
 
 func (o overrideURL) Apply(s *common.DialSettings) {
 	s.BaseURL = o.baseURL
+}
+
+// AllowInsecure skips TLS verification (this is very likely only useful
+// during testing)
+func AllowInsecure() ClientOption {
+	return allowInsecure{}
+}
+
+type allowInsecure struct{}
+
+func (o allowInsecure) Apply(s *common.DialSettings) {
+	s.AllowInsecure = true
 }
 
 // WithHeaders returns a ClientOption that specified a header map
@@ -57,20 +69,23 @@ func (w withSessionToken) Apply(s *common.DialSettings) {
 	s.SessionToken = w.token
 }
 
-// WithAuthenticationFunc returns a ClientOption that accepts an
-// authentication function.
-func WithAuthenticationFunc(f func(bool, error)) ClientOption {
-	return withAuthenticationFunc{f}
+// WithTokenFunc returns a ClientOption that specifies a token minting
+// function.  This would normally be used to call an external identity
+// service on a remote server.
+func WithTokenFunc(tokenFunc func(string, string) (string, error)) ClientOption {
+	return withTokenFunc{tokenFunc}
 }
 
-type withAuthenticationFunc struct{ f func(bool, error) }
+type withTokenFunc struct {
+	tokenFunc func(user, nonce string) (token string, err error)
+}
 
-func (w withAuthenticationFunc) Apply(s *common.DialSettings) {
-	s.AuthenticationFunc = &w.f
+func (w withTokenFunc) Apply(s *common.DialSettings) {
+	s.TokenFunc = w.tokenFunc
 }
 
 // WithCredentials returns a ClientOption that specifies explicit client
-// credentials to be used for authenticaion.
+// credentials to be used for authentication.
 func WithCredentials(c *common.ClientCredentials) ClientOption {
 	return withCredentials{c}
 }

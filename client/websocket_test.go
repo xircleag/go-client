@@ -17,6 +17,8 @@ func TestWebsocketReceive(t *testing.T) {
 	// Create a confirmation channel
 	confirm := make(chan bool)
 
+	c.Websocket.Connect()
+
 	// Wait for messages
 	go func() {
 		ctx := context.Background()
@@ -69,6 +71,12 @@ func TestWebsocketEventHandler(t *testing.T) {
 			}
 		}
 	})
+
+	// Connect to the websocket
+	err = c.Websocket.Connect()
+	if err != nil {
+		t.Fatalf("Error connecting to websocket: %v", err)
+	}
 
 	// Start listening for events
 	ctx := context.Background()
@@ -138,4 +146,39 @@ func TestWebsocketMultipleEventHandler(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal(fmt.Errorf("Timeout waiting for reply"))
 	}
+}
+
+func ExampleWebsocket() {
+	// Register your desired handlers prior to connecting to make sure they
+	// receive all events.
+	c.Websocket.HandleFunc(Websocket.WebsocketMessageCreate, func(w *Websocket, p *WebsocketPacket) {
+		switch p.Body.(type) {
+		case *WebsocketResponse:
+			res := p.Body.(WebsocketResponse)
+			message := res.Data.(*common.Message)
+			fmt.Println(fmt.Sprintf("%+v", message))
+		}
+	})
+
+	ctx := context.Background()
+
+	// Connect to the websocket
+	c.Websocket.Connect()
+
+	// Create a conversation
+	convo, err := c.CreateConversation(ctx, []string{"recipient1", "recipient2"}, false, nil)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Error creating conversation: %v", err))
+		return
+	}
+
+	// Send a message to the conversation, resulting in a message creation event
+	message, err := convo.SendTextMessage(ctx, "Example message", nil)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Error sending message: %v", err))
+		return
+	}
+
+	// Show the message contents
+	fmt.Println(fmt.Sprintf("%+v", message))
 }

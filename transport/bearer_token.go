@@ -17,7 +17,7 @@ type bearerTokenTransport struct {
 	base      http.RoundTripper
 }
 
-func (t bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt := t.base
 	if rt == nil {
 		return nil, fmt.Errorf("No transport specified")
@@ -37,9 +37,6 @@ func (t bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	if newReq.Method == "PATCH" {
 		newReq.Header["Content-Type"] = []string{fmt.Sprintf("application/vnd.layer-patch+json")}
 	}
-
-	// XXX
-	//fmt.Println(fmt.Sprintf("newReq: %+v", newReq))
 
 	return rt.RoundTrip(&newReq)
 }
