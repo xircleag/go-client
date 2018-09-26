@@ -23,6 +23,7 @@ type Client struct {
 	transport    *transport.HTTPTransport
 }
 
+// NonceRequest is the payload used to request a nonce
 type NonceRequest struct {
 	Nonce string `json:"nonce"`
 }
@@ -41,10 +42,12 @@ func NewClient(ctx context.Context, appID string, options ...option.ClientOption
 		return nil, fmt.Errorf("Error building websocket URL: %v", err)
 	}
 
-	return NewTestClient(u, wu, ctx, appID, nil, options...)
+	return NewClientWithURLs(u, wu, ctx, appID, options...)
 }
 
-func NewTestClient(u *url.URL, wu *url.URL, ctx context.Context, appID string, ws *Websocket, options ...option.ClientOption) (*Client, error) {
+// NewClientWithURLs creates a new Layer Client API client with custom
+// endpoint URLs.  Most users will not ever need to use this functionality.
+func NewClientWithURLs(u *url.URL, wu *url.URL, ctx context.Context, appID string, options ...option.ClientOption) (*Client, error) {
 	headers := map[string][]string{
 		"Accept":       {"application/vnd.layer+json; version=2.0"},
 		"Content-Type": {"application/json"},
@@ -82,10 +85,12 @@ func (c *Client) WebsocketURL() *url.URL {
 	return c.websocketURL
 }
 
+// GetNonce fetches a nonce as implemented by the transport
 func (c *Client) GetNonce(ctx context.Context) (string, error) {
 	return c.transport.Session.GetNonce(ctx)
 }
 
+// SessionToken gets a session token as implemented by the transport
 func (c *Client) SessionToken(ctx context.Context) (string, error) {
 	return c.transport.Session.Token(ctx)
 }
@@ -99,7 +104,7 @@ func getTimer(ctx context.Context) (timer *time.Timer) {
 	if present {
 		timer = time.NewTimer(deadline.Sub(time.Now()))
 	} else {
-		// default timeout of 30 seconds
+		// Default timeout of 30 seconds
 		timer = time.NewTimer(time.Duration(30) * time.Second)
 	}
 	return
