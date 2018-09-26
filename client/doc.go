@@ -15,8 +15,8 @@ methods are supported.  See the examples for standard usage.
 Iterable Objects
 
 Certain returned values are iterable.  Examples of this are conversation and
-message lists.  This package implements a special that signals the end of an
-iterable result.
+message lists.  This package implements a special type that signals the end of
+an iterable result.
 
 Contexts
 

@@ -3,15 +3,18 @@ package server
 import (
 	"context"
 	"encoding/json"
-	//"fmt"
+	"flag"
+	"fmt"
 	"io/ioutil"
-	"net/url"
-	//"os"
+	"os"
 	"testing"
 
-	//"github.com/layerhq/go-client/common"
-	"github.com/layerhq/go-client/option"
 	"github.com/layerhq/go-client/common"
+	"github.com/layerhq/go-client/option"
+)
+
+var (
+	testClient *Server
 )
 
 type TestingCredentials struct {
@@ -28,15 +31,18 @@ type TestingCredentialsKey struct {
 	Public  string `json:"public"`
 }
 
+func TestMain(m *testing.M) {
+	flag.Parse()
+	result := m.Run()
+	os.Exit(result)
+}
+
 func createTestClient() (*Server, error) {
 	// Load credentials
-	/*
-	path := os.Getenv("TESTING_CREDENTIALS")
+	path := os.Getenv("LAYER_TESTING_CREDENTIALS")
 	if path == "" {
-		return nil, fmt.Errorf("TESTING_CREDENTIALS path is not set")
+		return nil, fmt.Errorf("LAYER_TESTING_CREDENTIALS path is not set")
 	}
-	*/
-	path := "/Users/adam/workspace/test/staging1-creds.json"
 
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -50,8 +56,7 @@ func createTestClient() (*Server, error) {
 
 	ctx := context.Background()
 
-	u, _ := url.Parse("https://staging-api.layer.com/apps/" + c.AppID + "/")
-	return NewTestClient(ctx, u, c.AppID, option.WithBearerToken(c.APIKey))
+	return NewClient(ctx, c.ApplicationID, option.AllowInsecure(), option.WithBearerToken(c.APIKey))
 }
 
 func TestCreateClientWithBearerToken(t *testing.T) {
@@ -59,5 +64,21 @@ func TestCreateClientWithBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("Created client API object")
+}
+
+func ExampleNewClient() {
+	ctx := context.Background()
+
+	// Create a new instance of the Server API
+	client, err := NewClient(ctx, "APPLICATION_ID", option.WithBearerToken("API_KEY"))
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Error creating Layer Server API client: %v", err))
+	}
+
+	// Create a new conversation
+	convo, err := client.CreateConversation(ctx, []string{"recipient1", "recipient2"}, false, common.Metadata{})
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Error creating conversation: %v", err))
+	}
+	fmt.Println(fmt.Sprintf("%+v", convo))
 }
