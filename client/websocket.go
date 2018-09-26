@@ -23,15 +23,25 @@ const (
 
 	WebsocketSignalTyping = "typing"
 
-	WebsocketChangeConversationCreate          = "Conversation.create"
-	WebsocketChangeConversationDelete          = "Conversation.delete"
-	WebsocketChangeConversationParticipants    = "Conversation.participants"
-	WebsocketChangeConversationMetadata        = "Conversation.metadata"
-	WebsocketChangeConversationMarkAllRead     = "Conversation.mark_all_read"
-	WebsocketChangeConversationRecipientStatus = "Conversation.recipient_status"
-	WebsocketChangeConversationLastMessage     = "Conversation.last_message"
-	WebsocketChangeMessageCreate               = "Message.create"
-	WebsocketChangeMessageDelete               = "Message.delete"
+	WebsocketConversationCreate          = "Conversation.create"
+	WebsocketConversationDelete          = "Conversation.delete"
+	WebsocketConversationParticipants    = "Conversation.participants"
+	WebsocketConversationMetadata        = "Conversation.metadata"
+	WebsocketConversationMarkAllRead     = "Conversation.mark_all_read"
+	WebsocketConversationRecipientStatus = "Conversation.recipient_status"
+	WebsocketConversationLastMessage     = "Conversation.last_message"
+	WebsocketMessageCreate               = "Message.create"
+	WebsocketMessageDelete               = "Message.delete"
+
+	WebsocketChangeConversationCreate          = "Change.Conversation.create"
+	WebsocketChangeConversationDelete          = "Change.Conversation.delete"
+	WebsocketChangeConversationParticipants    = "Change.Conversation.participants"
+	WebsocketChangeConversationMetadata        = "Change.Conversation.metadata"
+	WebsocketChangeConversationMarkAllRead     = "Change.Conversation.mark_all_read"
+	WebsocketChangeConversationRecipientStatus = "Change.Conversation.recipient_status"
+	WebsocketChangeConversationLastMessage     = "Change.Conversation.last_message"
+	WebsocketChangeMessageCreate               = "Change.Message.create"
+	WebsocketChangeMessageDelete               = "Change.Message.delete"
 )
 
 type Websocket struct {
@@ -41,18 +51,8 @@ type Websocket struct {
 	handlers *websocketEventHandlerSet
 	sync.RWMutex
 	isListening bool
+	counter     int64
 	Headers     http.Header
-}
-
-func NewWebsocket(opts ...WebsocketOption) (ws *Websocket, err error) {
-	ws = new(Websocket)
-
-	for _, opt := range opts {
-		if err = opt(ws); err != nil {
-			return
-		}
-	}
-	return
 }
 
 type WebsocketPacket struct {
@@ -170,7 +170,7 @@ func (hs *websocketEventHandlerSet) dispatch(w *Websocket, p *WebsocketPacket) {
 		handlerName = strings.ToLower(r.Method)
 	case *WebsocketChange:
 		c := p.Body.(*WebsocketChange)
-		handlerName = strings.ToLower(fmt.Sprintf("%s.%s", c.Object.Type, c.Operation))
+		handlerName = strings.ToLower(fmt.Sprintf("Change.%s.%s", c.Object.Type, c.Operation))
 	default:
 		handlerName = "Unknown"
 	}
@@ -199,15 +199,30 @@ var wsHeaders = http.Header{
 	"Sec-WebSocket-Protocol": {"layer-3.0"},
 }
 
-func (w *Websocket) connect() error {
+// NewWebsocket creates a new Websocket with options
+func NewWebsocket(opts ...WebsocketOption) (ws *Websocket, err error) {
+	ws = new(Websocket)
+
+	for _, opt := range opts {
+		if err = opt(ws); err != nil {
+			return
+		}
+	}
+	return
+}
+
+// Connect a websocket
+func (w *Websocket) Connect() error {
 	if w.conn != nil {
 		return nil
 	}
 
 	w.Lock()
 	defer w.Unlock()
-	w.dialer = &websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	w.dialer = &websocket.Dialer{}
+
+	if w.client.transport.Session == nil {
+		return fmt.Errorf("Invalid session")
 	}
 
 	token, err := w.client.transport.Session.Token(context.TODO())
@@ -223,21 +238,20 @@ func (w *Websocket) connect() error {
 	w.conn = ws
 
 	// Dispatch a connected event
-	w.handlers.dispatch(w, &WebsocketPacket{
-		Body: &WebsocketResponse{Method: "connected"},
-	})
+	if w.handlers != nil {
+		w.handlers.dispatch(w, &WebsocketPacket{
+			Body: &WebsocketResponse{Method: "connected"},
+		})
+	}
 
 	return nil
 }
 
 // Send writes a websocket packet
 func (w *Websocket) Send(ctx context.Context, p *WebsocketPacket) error {
-	if err := w.connect(); err != nil {
+	if err := w.Connect(); err != nil {
 		return err
 	}
-
-	// I don't know why this is necessary
-	time.Sleep(1)
 
 	w.Lock()
 	err := w.conn.WriteJSON(p)
@@ -260,45 +274,32 @@ func (w *Websocket) Listen(ctx context.Context) error {
 	})
 }
 
+// Register a handler for the specified method
 func (w *Websocket) HandleFunc(method string, h WebsocketHandlerFunc) WebsocketEventHandlerRemover {
 	if w.handlers == nil {
+		w.Lock()
 		w.handlers = &websocketEventHandlerSet{
 			set: make(map[string][]*websocketEventHandlerNode),
 		}
+		w.Unlock()
 	}
 	return w.handlers.add(method, h)
 }
 
 // Receive calls f with messages from the websocket, note this blocks until an error is encountered
 func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *WebsocketPacket)) error {
-	if err := w.connect(); err != nil {
+	if err := w.Connect(); err != nil {
 		return err
 	}
 
 	for {
-		// Create a response reader
-		/*
-			_, r, err := w.conn.NextReader()
-			if err != nil {
-				return err
-			}
-
-			res, err := ioutil.ReadAll(r)
-			if err != nil {
-				return err
-			}
-
-			// Decode the response
-			var body json.RawMessage
-			p := &WebsocketPacket{Body: &body}
-			if err := json.Unmarshal(res, &p); err != nil {
-				return err
-			}
-		*/
 		var body json.RawMessage
 		p := &WebsocketPacket{Body: &body}
 		if err := w.conn.ReadJSON(p); err != nil {
-			continue
+			time.Sleep(1 * time.Second)
+
+			// Re-connect the websocket
+			w.Connect()
 		}
 
 		switch strings.ToLower(p.Type) {
@@ -311,18 +312,26 @@ func (w *Websocket) Receive(ctx context.Context, f func(context.Context, *Websoc
 			p.Body = r
 
 			rawMsg := *r.Data.(*json.RawMessage)
+
+			counter, err := jsonparser.GetInt(rawMsg, "counter")
+			if err == nil {
+				w.counter = counter
+			}
+
 			id, err := jsonparser.GetString(rawMsg, "id")
-			objectType := strings.ToLower(id[9:])
-			switch {
-			case strings.HasPrefix(objectType, "conversations"):
-				var conversation *Conversation
-				if err = json.Unmarshal(rawMsg, &conversation); err == nil {
-					r.Data = conversation
-				}
-			case strings.HasPrefix(objectType, "messages"):
-				var message *Message
-				if err = json.Unmarshal(rawMsg, &message); err == nil {
-					r.Data = message
+			if err != nil && strings.HasPrefix(id, "layer://") {
+				objectType := strings.ToLower(id[9:])
+				switch {
+				case strings.HasPrefix(objectType, "conversations"):
+					var conversation *Conversation
+					if err = json.Unmarshal(rawMsg, &conversation); err == nil {
+						r.Data = conversation
+					}
+				case strings.HasPrefix(objectType, "messages"):
+					var message *Message
+					if err = json.Unmarshal(rawMsg, &message); err == nil {
+						r.Data = message
+					}
 				}
 			}
 		case "change":
